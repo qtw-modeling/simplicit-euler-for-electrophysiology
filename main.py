@@ -32,18 +32,8 @@ v_k=-12
 v_l=10.613
 c=1
 
-dt = 20e-2
+dtArray = [1.0/(8**i) for i in range(0, 5)]
 T = 50.0
-time_array = np.arange(0, T, dt)
-v, v_euler = np.zeros(len(time_array)), np.zeros(len(time_array))
-
-v_rest = 0
-v[0] = v_rest
-v_euler[0] = v_rest
-
-
-I_s = np.zeros(len(time_array))
-I_s[:] = 10
 
 
 
@@ -56,11 +46,10 @@ def rhs_gating_vars(alpha_, beta_, v_, var_):
 
 step_v = 1e-5
 d_gating_var = 1e-5
+v_rest = 0
 
-m = m_inf(v_rest)
-h = h_inf(v_rest)
-n = n_inf(v_rest)
 
+'''
 startEuler = time.clock()
 for i in range(1, len(time_array)):
 
@@ -73,13 +62,69 @@ for i in range(1, len(time_array)):
     v_euler[i] = v_euler[i - 1] + dv
 
 timeEuler = time.clock() - startEuler
+'''
 
 
-m = m_inf(v_rest)
-h = h_inf(v_rest)
-n = n_inf(v_rest)
 
-dtStar = dt / 1.0
+counter = -1
+pl.figure()
+for dt in dtArray:
+    startMine = time.clock()
+    m = m_inf(v_rest)
+    h = h_inf(v_rest)
+    n = n_inf(v_rest)
+
+    # grid arrays and parameters
+    time_array = np.arange(0, T, dt)
+    v, v_euler = np.zeros(len(time_array)), np.zeros(len(time_array))
+    I_s = np.zeros(len(time_array))
+    I_s[:] = 10
+
+    dtStar = dt / 1.0
+    for i in range(1, len(time_array)):
+            derivative_m = 1.0 / d_gating_var * (rhs_gating_vars(alpha_m, beta_m, v[i-1], m + d_gating_var) -  rhs_gating_vars(alpha_m, beta_m, v[i-1], m))
+            derivative_n = 1.0 / d_gating_var * (rhs_gating_vars(alpha_n, beta_n, v[i-1], n + d_gating_var) -  rhs_gating_vars(alpha_n, beta_n, v[i-1], n))
+            derivative_h = 1.0 / d_gating_var * (rhs_gating_vars(alpha_h, beta_h, v[i-1], h + d_gating_var) -  rhs_gating_vars(alpha_h, beta_h, v[i-1], h))
+
+            #derivative = (rhs(I_s[i - 1], m, n, h, v[i-1] + 1e-5) - rhs(I_s[i - 1], m, n, h, v[i-1])) / 1e-5
+
+            m += rhs_gating_vars(alpha_m, beta_m, v[i-1], m) * dt / (1 - dtStar * derivative_m)
+            n += rhs_gating_vars(alpha_n, beta_n, v[i-1], n) * dt / (1 - dtStar * derivative_n)
+            h += rhs_gating_vars(alpha_h, beta_h, v[i-1], h) * dt / (1 - dtStar * derivative_h)
+
+            #rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
+            derivative = (rhs(I_s[i - 1], m, n, h, v[i-1] + d_gating_var) - rhs(I_s[i - 1], m, n, h, v[i-1])) / d_gating_var
+
+            dv = rhs(I_s[i - 1], m, n, h, v[i-1]) * dt / (1 - dtStar * derivative)
+            v[i] = v[i - 1] + dv
+
+            if (i%2 == 0):
+                dtStar = dt / 1
+            else:
+                dtStar = dt
+
+            #dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
+            #v_euler[i] = v_euler[i-1] + dv
+    timeMine = time.clock() - startMine
+    counter += 1
+    #ax1.plot(time_array, v_euler, , label = 'Forward Euler', linewidth = 4)
+    pl.plot(time_array, v, '-', label = 'dt = %.2e ms' % dtArray[counter], linewidth = 3)
+    pl.title('timestep = %.0e ms\n' % (dt))
+    pl.legend()
+    pl.grid('on')
+'''
+ax2.plot(time_array, v, 'g', label = 'Simplified Backward Euler', linewidth = 4)
+ax2.set_title('timestep = %.2e ms, computational time = %.2e s' % (dt, timeMine))
+ax2.legend()
+'''
+pl.xlabel('time, ms')
+pl.ylabel('action potential, mV')
+pl.grid('on')
+#f.figure()
+
+
+'''
+pl.figure()
 startMine = time.clock()
 for i in range(1, len(time_array)):
         derivative_m = 1.0 / d_gating_var * (rhs_gating_vars(alpha_m, beta_m, v[i-1], m + d_gating_var) -  rhs_gating_vars(alpha_m, beta_m, v[i-1], m))
@@ -97,8 +142,8 @@ for i in range(1, len(time_array)):
 
         dv = rhs(I_s[i - 1], m, n, h, v[i-1]) * dt / (1 - dtStar * derivative)
         v[i] = v[i - 1] + dv
-        
-        if (i%2 == 0):        
+
+        if (i%2 == 0):
             dtStar = dt / 1.0
         else:
             dtStar = dt
@@ -106,29 +151,6 @@ for i in range(1, len(time_array)):
     	#dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
     	#v_euler[i] = v_euler[i-1] + dv
 timeMine = time.clock() - startMine
-
-
-#fntSize = 20
-f, (ax1) = pl.subplots(1, sharex=False, sharey=False)
-#ax1.plot(time_array, v_euler, 'b-', label = 'Forward Euler', linewidth = 4)
-ax1.plot(time_array, v, 'g-', label = 'Simplified Backward Euler', linewidth = 4)
-ax1.set_title('timestep = %.0e ms\n computational time: Forward Euler = %.2e s, Simplified Backward Euler = %.2e s' % (dt, timeEuler, timeMine))
-ax1.set_ylabel('action potential, mV')
-ax1.legend()
-ax1.grid('on')
-'''
-ax2.plot(time_array, v, 'g', label = 'Simplified Backward Euler', linewidth = 4)
-ax2.set_title('timestep = %.2e ms, computational time = %.2e s' % (dt, timeMine))
-ax2.legend()
-'''
-pl.xlabel('time, ms')
-pl.ylabel('action potential, mV')
-pl.grid('on')
-#f.figure()
-
-
-'''
-pl.figure()
 pl.plot(time_array, v, 'b-o', linewidth = 3)
 pl.title('Forward Euler, dt = %.2e s, computational time = %.2e s' % (dt, timeMine))
 pl.legend(('voltage spiking', 'input signal strength'), "upper right")
