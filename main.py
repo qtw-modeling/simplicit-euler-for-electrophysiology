@@ -61,10 +61,10 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(1e-4, 5e-2, 10)
-#dtArray.insert(0, 1e-4)
+dtArray = np.linspace(1e-4, 1e-1, 10)
+
 print dtArray
-T = 5.0
+T = 10.0
 
 
 def rhs(i_s, m_, n_, h_, v_):
@@ -75,7 +75,7 @@ def rhs_gating_vars(alpha_, beta_, v_, var_):
     return alpha_(v_) * (1 - var_) - beta_(v_) * var_
 
 
-step_v = 1e-5
+step_v = 1e-4
 d_gating_var = 1e-7
 v_rest = 0
 
@@ -97,6 +97,7 @@ timeEuler = time.clock() - startEuler
 error, timeMaxError = [], []
 
 counter = 0
+omega = 0.3 # relaxation parameter
 pl.figure()
 for dt in dtArray:
     startMine = time.clock()
@@ -132,7 +133,7 @@ for dt in dtArray:
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
 
         if counter != 0: # for calculating numerical solutions with various timesteps
-            dv = Rhs[i-1] * dt# / (1 - dtStar * derivative)
+            dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
         else: # for calculating "analitical" solution using Explicit Euler
             dv = Rhs[i-1] * dt
 
@@ -159,10 +160,10 @@ for dt in dtArray:
 
     if counter == 0:
         pl.plot(time_array, v, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
-    elif (counter%1 == 0):
+    elif (counter%2 == 0):
         pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
     #pl.title('timestep = %.0e ms\n' % (dt))
-    pl.legend(loc='upper left')
+    pl.legend(loc='lower left')
     pl.xlabel('time, ms')
     pl.ylabel('action potential, mV')
     pl.ylim([-20, 120])
