@@ -45,8 +45,9 @@ def CalculateNorm(arrayAnalitical, array2):
         delta = abs(arrayAnalitical[int(k * i)] - array2[i])
         normArray.append(delta)
     normArray = np.array(normArray)
-    #print 'norm = ', normArray
-    return np.amax(normArray)
+    max = np.amax(normArray)
+    indexMax = np.argmax(normArray)
+    return max, indexMax
 
 
 
@@ -60,8 +61,10 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = [1.0 / (4 ** i) for i in range(5, 2, -1)]
-T = 50.0
+dtArray = np.linspace(1e-4, 5e-2, 10)
+#dtArray.insert(0, 1e-4)
+print dtArray
+T = 5.0
 
 
 def rhs(i_s, m_, n_, h_, v_):
@@ -73,7 +76,7 @@ def rhs_gating_vars(alpha_, beta_, v_, var_):
 
 
 step_v = 1e-5
-d_gating_var = 1e-5
+d_gating_var = 1e-7
 v_rest = 0
 
 '''
@@ -91,8 +94,8 @@ for i in range(1, len(time_array)):
 timeEuler = time.clock() - startEuler
 '''
 
+error, timeMaxError = [], []
 
-error = []
 counter = 0
 pl.figure()
 for dt in dtArray:
@@ -115,7 +118,7 @@ for dt in dtArray:
     I_s = np.zeros(len(time_array))
     I_s[:] = 10
 
-    dtStar = dt / 2.0
+    dtStar = dt / 2
     for i in range(1, len(time_array)):
 
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
@@ -126,15 +129,19 @@ for dt in dtArray:
         derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
                                                                               v[i - 1])) / d_gating_var
 
-        Rhs[i] = rhs(I_s[i - 1], m[i-1], n[i-1], h[i-1], v[i - 1])
-        dv = Rhs[i] * dt / (1 - dtStar * derivative)
+        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
+
+        if counter != 0: # for calculating numerical solutions with various timesteps
+            dv = Rhs[i-1] * dt# / (1 - dtStar * derivative)
+        else: # for calculating "analitical" solution using Explicit Euler
+            dv = Rhs[i-1] * dt
 
         v[i] = v[i - 1] + dv
 
-        if (i % 2 == 0):
+        '''if (i % 2 == 0):
             dtStar = dt / 1
         else:
-            dtStar = dt
+            dtStar = dt'''
 
     if (counter == 0):
         analiticalSolution[:] = v[:]
@@ -145,30 +152,37 @@ for dt in dtArray:
             # v_euler[i] = v_euler[i-1] + dv
     Rhs[-1] = Rhs[-2]
     timeMine = time.clock() - startMine
+
+    errTmp, indexErrTpm = CalculateNorm(analiticalSolution, v)
+    error.append(errTmp)
+    timeMaxError.append(indexErrTpm * dt)
+
+    if counter == 0:
+        pl.plot(time_array, v, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
+    elif (counter%1 == 0):
+        pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
+    #pl.title('timestep = %.0e ms\n' % (dt))
+    pl.legend(loc='upper left')
+    pl.xlabel('time, ms')
+    pl.ylabel('action potential, mV')
+    pl.ylim([-20, 120])
+    pl.grid('on')
     counter += 1
 
 
-    error.append(CalculateNorm(analiticalSolution, v))
-    print CalculateNorm(analiticalSolution, v)
-
-    #pl.plot(dtArray, error, '-o', linewidth = 4)
-    pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter-1], linewidth=4)
-    pl.title('timestep = %.0e ms\n' % (dt))
-    pl.legend()
-    pl.grid('on')
-'''
-ax2.plot(time_array, v, 'g', label = 'Simplified Backward Euler', linewidth = 4)
-ax2.set_title('timestep = %.2e ms, computational time = %.2e s' % (dt, timeMine))
-ax2.legend()
-'''
-
-pl.figure()
-pl.plot(np.log(dtArray), np.log(error), '-o', linewidth=4)
-#pl.xlabel('time, ms')
-#pl.ylabel('action potential, mV')
-pl.grid('on')
+#np.savetxt('error_derivative_explicit_euler.csv', np.c_[dtArray[1:], error[1:], timeMaxError[1:]], delimiter=',', header='timestep(ms),max_norm_error,time_of_max_norm_error(ms)')
+f, (ax1) = pl.subplots(1, 1)
+'''ax1.plot(np.log(dtArray[1:]), np.log(error[1:]), 'k-o', linewidth=4, markersize = 15)
+ax1.set_xlabel('ln(timestep)')
+ax1.set_ylabel('ln(absolute error)')
+ax1.grid('on')'''
+ax1.plot(dtArray[1:], error[1:], 'k-o', linewidth=4, markersize = 15)
+ax1.set_xlabel('timestep, ms')
+ax1.set_ylabel('absolute error, V/s')
+ax1.grid('on')
 # f.figure()
 
+#np.savetxt('error_explicit_euler.csv', np.c_[dtArray[1:], error[1:], timeMaxError[1:]], delimiter=',', header='timestep(ms),max_norm_error,time_of_max_norm_error(ms)')
 
 '''
 pl.figure()
