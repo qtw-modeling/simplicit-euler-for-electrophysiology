@@ -61,10 +61,10 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(1e-4, 1e-1, 10)
+dtArray = np.linspace(1e-4, 5e-2, 40)
 
 print dtArray
-T = 10.0
+T = 5.0
 
 
 def rhs(i_s, m_, n_, h_, v_):
@@ -94,27 +94,28 @@ for i in range(1, len(time_array)):
 timeEuler = time.clock() - startEuler
 '''
 
-error, timeMaxError = [], []
+error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 
 counter = 0
-omega = 0.3 # relaxation parameter
+omega = 1 # relaxation parameter
 pl.figure()
 for dt in dtArray:
     startMine = time.clock()
 
     # grid arrays and parameters
     time_array = np.arange(0, T, dt)
-    v, v_euler, m, n, h, Rhs = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
+    v, m, n, h, Rhs = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
+    v_e, m_e, n_e, h_e, Rhs_e = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
 
     if counter == 0:
         analiticalSolution = np.zeros(len(time_array))
 
 
 
-    m[0] = m_inf(v_rest)
-    h[0] = h_inf(v_rest)
-    n[0] = n_inf(v_rest)
-    v[0] = v_rest
+    m[0] = m_e[0] =  m_inf(v_rest)
+    h[0] = h_e[0] = h_inf(v_rest)
+    n[0] = n_e[0] = n_inf(v_rest)
+    v[0] = v_e[0] = v_rest
 
     I_s = np.zeros(len(time_array))
     I_s[:] = 10
@@ -126,18 +127,27 @@ for dt in dtArray:
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
 
+
+        m_e[i] = m_inf(v_e[i-1]) + (m_e[i-1] - m_inf(v_e[i-1])) * np.exp(-dt * (alpha_m(v_e[i-1]) + beta_m(v_e[i-1])))
+        n_e[i] = n_inf(v_e[i-1]) + (n_e[i-1] - n_inf(v_e[i-1])) * np.exp(-dt * (alpha_n(v_e[i-1]) + beta_n(v_e[i-1])))
+        h_e[i] = h_inf(v_e[i-1]) + (h_e[i-1] - h_inf(v_e[i-1])) * np.exp(-dt * (alpha_h(v_e[i-1]) + beta_h(v_e[i-1])))
+
         # rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
         derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
                                                                               v[i - 1])) / d_gating_var
 
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
+        Rhs_e[i-1] = rhs(I_s[i-1], m_e[i-1], n_e[i-1], h_e[i-1], v_e[i-1])
 
         if counter != 0: # for calculating numerical solutions with various timesteps
             dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
+            dv_e = Rhs_e[i-1] * dt
         else: # for calculating "analitical" solution using Explicit Euler
             dv = Rhs[i-1] * dt
+            dv_e = Rhs_e[i-1] * dt
 
-        v[i] = v[i - 1] + dv
+        v[i] = v[i-1] + dv
+        v_e[i] = v_e[i-1] + dv_e
 
         '''if (i % 2 == 0):
             dtStar = dt / 1
@@ -145,17 +155,22 @@ for dt in dtArray:
             dtStar = dt'''
 
     if (counter == 0):
-        analiticalSolution[:] = v[:]
+        analiticalSolution[:] = Rhs[:]
         #print 'ana = ', analiticalSolution
 
 
             # dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
             # v_euler[i] = v_euler[i-1] + dv
     Rhs[-1] = Rhs[-2]
+    Rhs_e[-1] = Rhs_e[-2]
+
     timeMine = time.clock() - startMine
 
-    errTmp, indexErrTpm = CalculateNorm(analiticalSolution, v)
+    errTmp, indexErrTpm = CalculateNorm(analiticalSolution, Rhs)
+    errTmp_e, indexErrTpm_e = CalculateNorm(analiticalSolution, Rhs_e)
+
     error.append(errTmp)
+    error_e.append(errTmp_e)
     timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
@@ -177,10 +192,29 @@ f, (ax1) = pl.subplots(1, 1)
 ax1.set_xlabel('ln(timestep)')
 ax1.set_ylabel('ln(absolute error)')
 ax1.grid('on')'''
-ax1.plot(dtArray[1:], error[1:], 'k-o', linewidth=4, markersize = 15)
+ax1.plot((dtArray[1:]), (error[1:]), 'bo', label='Simplified Backward Euler', linewidth=4, markersize = 15)
+ax1.plot((dtArray[1:]), (error_e[1:]), 'go', label='Forward Euler', linewidth=4, markersize = 15)
+
+
+# calc the trendline
+z = np.polyfit(dtArray[1:7], error[1:7], 1)
+p = np.poly1d(z)
+ax1.plot((dtArray[1:]), p((dtArray[1:])),"b-", linewidth=4)
+# the line equation:
+
+ax1.text(0.01, 45e1, "y = (%.2e)*x + (%.2e)" %(z[0], z[1]), color='b', fontsize = 20, fontweight='bold')
+
+# calc the trendline
+z_e = np.polyfit(dtArray[1:7], error_e[1:7], 1)
+p_e = np.poly1d(z_e)
+ax1.plot((dtArray[1:]), p_e((dtArray[1:])),"g-", linewidth=4)
+# the line equation:
+ax1.text(0.01, 40e1, "y = (%.2e)*x + (%.2e)" %(z_e[0], z_e[1]), color='g', fontsize = 20, fontweight='bold')
+
 ax1.set_xlabel('timestep, ms')
 ax1.set_ylabel('absolute error, V/s')
 ax1.grid('on')
+ax1.legend(loc='upper left')
 # f.figure()
 
 #np.savetxt('error_explicit_euler.csv', np.c_[dtArray[1:], error[1:], timeMaxError[1:]], delimiter=',', header='timestep(ms),max_norm_error,time_of_max_norm_error(ms)')
