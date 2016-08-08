@@ -61,7 +61,7 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(1e-4, 5e-2, 40)
+dtArray = np.linspace(1e-4, 5e-2, 80)
 
 print dtArray
 T = 5.0
@@ -95,7 +95,7 @@ timeEuler = time.clock() - startEuler
 '''
 
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
-computationalTimes = []
+computationalTimesFE, computationalTimesSIE = [], []
 
 counter = 0
 omega = 1 # relaxation parameter
@@ -121,7 +121,7 @@ for dt in dtArray:
     I_s = np.zeros(len(time_array))
     I_s[:] = 10
 
-    start = time.clock()
+    startFE = time.clock()
     dtStar = dt / 2
     for i in range(1, len(time_array)):
 
@@ -136,16 +136,16 @@ for dt in dtArray:
 
         # rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
         #derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
-                                     #                                         v[i - 1])) / d_gating_var
+         #                                                                    v[i - 1])) / d_gating_var
 
         #Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
         Rhs_e[i-1] = rhs(I_s[i-1], m_e[i-1], n_e[i-1], h_e[i-1], v_e[i-1])
 
         #if counter != 0: # for calculating numerical solutions with various timesteps
-            #dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
+        #dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
         dv_e = Rhs_e[i-1] * dt
         #else: # for calculating "analitical" solution using Explicit Euler
-            #dv = Rhs[i-1] * dt
+        #    dv = Rhs[i-1] * dt
         #dv_e = Rhs_e[i-1] * dt
 
         #v[i] = v[i-1] + dv
@@ -156,19 +156,57 @@ for dt in dtArray:
         else:
             dtStar = dt'''
 
-    timeMine = time.clock() - startMine
+    timeFE = time.clock() - startFE
+    computationalTimesFE.append(timeFE)
+
+
+
+    startSIE = time.clock()
+    for i in range(1, len(time_array)):
+
+        m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
+        n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
+        h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
+
+
+        #m_e[i] = m_inf(v_e[i-1]) + (m_e[i-1] - m_inf(v_e[i-1])) * np.exp(-dt * (alpha_m(v_e[i-1]) + beta_m(v_e[i-1])))
+        #n_e[i] = n_inf(v_e[i-1]) + (n_e[i-1] - n_inf(v_e[i-1])) * np.exp(-dt * (alpha_n(v_e[i-1]) + beta_n(v_e[i-1])))
+        #h_e[i] = h_inf(v_e[i-1]) + (h_e[i-1] - h_inf(v_e[i-1])) * np.exp(-dt * (alpha_h(v_e[i-1]) + beta_h(v_e[i-1])))
+
+        # rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
+        derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
+                                                                             v[i - 1])) / d_gating_var
+
+        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
+        #Rhs_e[i-1] = rhs(I_s[i-1], m_e[i-1], n_e[i-1], h_e[i-1], v_e[i-1])
+
+        #if counter != 0: # for calculating numerical solutions with various timesteps
+        dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
+        #dv_e = Rhs_e[i-1] * dt
+        #else: # for calculating "analitical" solution using Explicit Euler
+        #    dv = Rhs[i-1] * dt
+        #dv_e = Rhs_e[i-1] * dt
+
+        v[i] = v[i-1] + dv
+        #v_e[i] = v_e[i-1] + dv_e
+
+        '''if (i % 2 == 0):
+            dtStar = dt / 1
+        else:
+        '''
+    timeSIE = time.clock() - startSIE
+    computationalTimesSIE.append(timeSIE)
 
     if (counter == 0):
-        analiticalSolution[:] = v_e[:]
+        analiticalSolution[:] = v[:]
         #print 'ana = ', analiticalSolution
 
 
             # dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
             # v_euler[i] = v_euler[i-1] + dv
-    #Rhs[-1] = Rhs[-2]
+    Rhs[-1] = Rhs[-2]
     Rhs_e[-1] = Rhs_e[-2]
 
-    computationalTimes.append(timeMine)
 
     #errTmp, indexErrTpm = CalculateNorm(analiticalSolution, v_e)
     #errTmp_e, indexErrTpm_e = CalculateNorm(analiticalSolution, v_e)
@@ -178,9 +216,9 @@ for dt in dtArray:
     #timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
-        pl.plot(time_array, v_e, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
+        pl.plot(time_array, v, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
     elif (counter%2 == 0):
-        pl.plot(time_array, v_e, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
+        pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
     #pl.title('timestep = %.0e ms\n' % (dt))
     pl.legend(loc='lower left')
     pl.xlabel('time, ms')
@@ -197,8 +235,11 @@ ax1.set_xlabel('ln(timestep)')
 ax1.set_ylabel('ln(absolute error)')
 ax1.grid('on')'''
 #ax1.plot((error[1:]), dtArray[1:], 'bo', label='Simplified Backward Euler', linewidth=4, markersize = 15)
-ax1.plot(dtArray[1:], np.array(computationalTimes[1:]) ,'g-o', label='Forward Euler', linewidth=4, markersize = 15)
-ax1.set_ylim([0, 0.50])
+computationalTimePercent = 100*np.abs(np.array(computationalTimesFE[:]) - np.array(computationalTimesSIE[:])) / np.array(computationalTimesFE[:])
+ax1.plot(dtArray[:], computationalTimePercent ,'ko', linewidth=4, markersize = 15)
+ax1.plot(dtArray[:], np.array([np.mean(computationalTimePercent) for i in xrange(len(dtArray))]), 'k--', linewidth = 14)
+#ax1.plot(dtArray[:], np.array(computationalTimesSIE[:]) ,'bo', label='Simplified Backward Euler', linewidth=4, markersize = 15)
+#ax1.set_ylim([9, 15])
 '''
 # calc the trendline
 z = np.polyfit(dtArray[1:7], error[1:7], 1)
@@ -216,9 +257,9 @@ p_e = np.poly1d(z_e)
 #ax1.text(0.01, 40e1, "y = (%.2e)*x + (%.2e)" %(z_e[0], z_e[1]), color='g', fontsize = 20, fontweight='bold')
 '''
 ax1.set_xlabel('timestep, ms')
-ax1.set_ylabel('computational time, s')
+ax1.set_ylabel('%')
 ax1.grid('on')
-ax1.legend(loc='upper left')
+ax1.legend(loc='upper right')
 # f.figure()
 
 #np.savetxt('error_explicit_euler.csv', np.c_[dtArray[1:], error[1:], timeMaxError[1:]], delimiter=',', header='timestep(ms),max_norm_error,time_of_max_norm_error(ms)')
