@@ -95,6 +95,7 @@ timeEuler = time.clock() - startEuler
 '''
 
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
+computationalTimes = []
 
 counter = 0
 omega = 1 # relaxation parameter
@@ -120,12 +121,13 @@ for dt in dtArray:
     I_s = np.zeros(len(time_array))
     I_s[:] = 10
 
+    start = time.clock()
     dtStar = dt / 2
     for i in range(1, len(time_array)):
 
-        m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
-        n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
-        h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
+        #m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
+        #n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
+        #h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
 
 
         m_e[i] = m_inf(v_e[i-1]) + (m_e[i-1] - m_inf(v_e[i-1])) * np.exp(-dt * (alpha_m(v_e[i-1]) + beta_m(v_e[i-1])))
@@ -133,20 +135,20 @@ for dt in dtArray:
         h_e[i] = h_inf(v_e[i-1]) + (h_e[i-1] - h_inf(v_e[i-1])) * np.exp(-dt * (alpha_h(v_e[i-1]) + beta_h(v_e[i-1])))
 
         # rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
-        derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
-                                                                              v[i - 1])) / d_gating_var
+        #derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
+                                     #                                         v[i - 1])) / d_gating_var
 
-        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
+        #Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
         Rhs_e[i-1] = rhs(I_s[i-1], m_e[i-1], n_e[i-1], h_e[i-1], v_e[i-1])
 
-        if counter != 0: # for calculating numerical solutions with various timesteps
-            dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
-            dv_e = Rhs_e[i-1] * dt
-        else: # for calculating "analitical" solution using Explicit Euler
-            dv = Rhs[i-1] * dt
-            dv_e = Rhs_e[i-1] * dt
+        #if counter != 0: # for calculating numerical solutions with various timesteps
+            #dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
+        dv_e = Rhs_e[i-1] * dt
+        #else: # for calculating "analitical" solution using Explicit Euler
+            #dv = Rhs[i-1] * dt
+        #dv_e = Rhs_e[i-1] * dt
 
-        v[i] = v[i-1] + dv
+        #v[i] = v[i-1] + dv
         v_e[i] = v_e[i-1] + dv_e
 
         '''if (i % 2 == 0):
@@ -154,34 +156,36 @@ for dt in dtArray:
         else:
             dtStar = dt'''
 
+    timeMine = time.clock() - startMine
+
     if (counter == 0):
-        analiticalSolution[:] = Rhs[:]
+        analiticalSolution[:] = v_e[:]
         #print 'ana = ', analiticalSolution
 
 
             # dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
             # v_euler[i] = v_euler[i-1] + dv
-    Rhs[-1] = Rhs[-2]
+    #Rhs[-1] = Rhs[-2]
     Rhs_e[-1] = Rhs_e[-2]
 
-    timeMine = time.clock() - startMine
+    computationalTimes.append(timeMine)
 
-    errTmp, indexErrTpm = CalculateNorm(analiticalSolution, Rhs)
-    errTmp_e, indexErrTpm_e = CalculateNorm(analiticalSolution, Rhs_e)
+    #errTmp, indexErrTpm = CalculateNorm(analiticalSolution, v_e)
+    #errTmp_e, indexErrTpm_e = CalculateNorm(analiticalSolution, v_e)
 
-    error.append(errTmp)
-    error_e.append(errTmp_e)
-    timeMaxError.append(indexErrTpm * dt)
+    #error.append(errTmp)
+    #error_e.append(errTmp_e)
+    #timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
-        pl.plot(time_array, v, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
+        pl.plot(time_array, v_e, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
     elif (counter%2 == 0):
-        pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
+        pl.plot(time_array, v_e, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
     #pl.title('timestep = %.0e ms\n' % (dt))
     pl.legend(loc='lower left')
     pl.xlabel('time, ms')
     pl.ylabel('action potential, mV')
-    pl.ylim([-20, 120])
+    #pl.ylim([-20, 120])
     pl.grid('on')
     counter += 1
 
@@ -192,27 +196,27 @@ f, (ax1) = pl.subplots(1, 1)
 ax1.set_xlabel('ln(timestep)')
 ax1.set_ylabel('ln(absolute error)')
 ax1.grid('on')'''
-ax1.plot((dtArray[1:]), (error[1:]), 'bo', label='Simplified Backward Euler', linewidth=4, markersize = 15)
-ax1.plot((dtArray[1:]), (error_e[1:]), 'go', label='Forward Euler', linewidth=4, markersize = 15)
-
-
+#ax1.plot((error[1:]), dtArray[1:], 'bo', label='Simplified Backward Euler', linewidth=4, markersize = 15)
+ax1.plot(dtArray[1:], np.array(computationalTimes[1:]) ,'g-o', label='Forward Euler', linewidth=4, markersize = 15)
+ax1.set_ylim([0, 0.50])
+'''
 # calc the trendline
 z = np.polyfit(dtArray[1:7], error[1:7], 1)
 p = np.poly1d(z)
-ax1.plot((dtArray[1:]), p((dtArray[1:])),"b-", linewidth=4)
+#ax1.plot((dtArray[1:]), p((dtArray[1:])),"b-", linewidth=4)
 # the line equation:
 
-ax1.text(0.01, 45e1, "y = (%.2e)*x + (%.2e)" %(z[0], z[1]), color='b', fontsize = 20, fontweight='bold')
+#ax1.text(0.01, 45e1, "y = (%.2e)*x + (%.2e)" %(z[0], z[1]), color='b', fontsize = 20, fontweight='bold')
 
 # calc the trendline
 z_e = np.polyfit(dtArray[1:7], error_e[1:7], 1)
 p_e = np.poly1d(z_e)
-ax1.plot((dtArray[1:]), p_e((dtArray[1:])),"g-", linewidth=4)
+#ax1.plot((dtArray[1:]), p_e((dtArray[1:])),"g-", linewidth=4)
 # the line equation:
-ax1.text(0.01, 40e1, "y = (%.2e)*x + (%.2e)" %(z_e[0], z_e[1]), color='g', fontsize = 20, fontweight='bold')
-
+#ax1.text(0.01, 40e1, "y = (%.2e)*x + (%.2e)" %(z_e[0], z_e[1]), color='g', fontsize = 20, fontweight='bold')
+'''
 ax1.set_xlabel('timestep, ms')
-ax1.set_ylabel('absolute error, V/s')
+ax1.set_ylabel('computational time, s')
 ax1.grid('on')
 ax1.legend(loc='upper left')
 # f.figure()
