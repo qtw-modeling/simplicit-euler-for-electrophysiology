@@ -3,6 +3,9 @@ import matplotlib
 import matplotlib.pyplot as pl
 import numpy as np
 import time
+from numba import jit
+import math as mt
+
 
 font = {'family': 'normal',
         'weight': 'normal',
@@ -10,32 +13,32 @@ font = {'family': 'normal',
 
 matplotlib.rc('font', **font)
 
+@jit(nopython=True)
+def alpha_n(val): return 0.01 * (-val + 10) / (mt.exp((-val + 10) / 10) - 1) if val != 10 else 0.1
 
-def alpha_n(v): return 0.01 * (-v + 10) / (np.exp((-v + 10) / 10) - 1) if v != 10 else 0.1
+@jit(nopython=True)
+def beta_n(val):  return 0.125 * mt.exp(-val / 80)
 
+@jit(nopython=True)
+def n_inf(val): return alpha_n(val) / (alpha_n(val) + beta_n(val))
 
-def beta_n(v):  return 0.125 * np.exp(-v / 80)
+@jit(nopython=True)
+def alpha_m(val): return (1) * 0.1 * (-val + 25) / (mt.exp((-val + 25) / 10) - 1) if val != 25 else 5
 
+@jit(nopython=True)
+def beta_m(val): return (1.)*4 * mt.exp(-val / 18)
 
-def n_inf(v): return alpha_n(v) / (alpha_n(v) + beta_n(v))
+@jit(nopython=True)
+def m_inf(val): return alpha_m(val) / (alpha_m(val) + beta_m(val))
 
+@jit(nopython=True)
+def alpha_h(val): return 0.07 * mt.exp(-val / 20)
 
-def alpha_m(v): return (1) * 0.1 * (-v + 25) / (np.exp((-v + 25) / 10) - 1) if v != 25 else 5
+@jit(nopython=True)
+def beta_h(val): return 1 / (mt.exp((-val + 30) / 10) + 1)
 
-
-def beta_m(v): return (1.)*4 * np.exp(-v / 18)
-
-
-def m_inf(v): return alpha_m(v) / (alpha_m(v) + beta_m(v))
-
-
-def alpha_h(v): return 0.07 * np.exp(-v / 20)
-
-
-def beta_h(v): return 1 / (np.exp((-v + 30) / 10) + 1)
-
-
-def h_inf(v): return alpha_h(v) / (alpha_h(v) + beta_h(v))
+@jit(nopython=True)
+def h_inf(val): return alpha_h(val) / (alpha_h(val) + beta_h(val))
 
 
 
@@ -56,7 +59,7 @@ def CalculateNorm(arrayAnalitical, array2):
         '''
     RRHS_error = np.sqrt(numerator / denumerator)
     #
-    print 100*RRHS_error
+    #print 100*RRHS_error
     '''
     normArray = np.array(normArray)
     max = np.amax(normArray)
@@ -69,7 +72,7 @@ def CalculateNorm(arrayAnalitical, array2):
 
 
 
-g_n = 1200
+g_n = 300
 g_k = 36
 g_l = 0.3
 v_n = 115
@@ -77,16 +80,16 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(1e-3, 3e-2, 50)
+dtArray = np.linspace(1e-4, 1e-2, 50)
 
 print dtArray
 T = 50.0
 
-
+@jit(nopython=True)
 def rhs(i_s, m_, n_, h_, v_):
     return (1. / c) * (i_s - g_n * (m_) ** 3 * (h_) * (v_ - v_n) - g_k * (n_ ** 4) * (v_ - v_k) - g_l * (v_ - v_l))
 
-
+@jit(nopython=True)
 def rhs_gating_vars(alpha_, beta_, v_, var_):
     return alpha_(v_) * (1 - var_) - beta_(v_) * var_
 
@@ -114,37 +117,87 @@ error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 amplitude = 0
 counter = 0
 omega = 1 # relaxation parameter
-pl.figure()
 
 
-
-
-
-for dt in dtArray:
-
-
-
-
-    startMine = time.clock()
-
-
-
-    # grid arrays and parameters
+@jit(nopython=True)
+def CalculateHH(dt):
     time_array = np.arange(0, T, dt)
     v, m, n, h, Rhs = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
     v_e, m_e, n_e, h_e, Rhs_e = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
+    I_s = np.zeros(len(time_array))
 
-    if counter == 0:
-        analiticalSolution = np.zeros(len(time_array))
-
-    #calculateActionPotential(m, n, h, )
 
     m[0] = m_e[0] = m_inf(v_rest)
     h[0] = h_e[0] = h_inf(v_rest)
     n[0] = n_e[0] = n_inf(v_rest)
     v[0] = v_e[0] = v_rest
 
+    I_s[:] = 10
+
+    dtStar = dt / 2
+    for i in range(1, len(time_array)):
+
+        m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * mt.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
+        n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * mt.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
+        h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * mt.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
+
+
+        m_e[i] = m_inf(v_e[i-1]) + (m_e[i-1] - m_inf(v_e[i-1])) * mt.exp(-dt * (alpha_m(v_e[i-1]) + beta_m(v_e[i-1])))
+        n_e[i] = n_inf(v_e[i-1]) + (n_e[i-1] - n_inf(v_e[i-1])) * mt.exp(-dt * (alpha_n(v_e[i-1]) + beta_n(v_e[i-1])))
+        h_e[i] = h_inf(v_e[i-1]) + (h_e[i-1] - h_inf(v_e[i-1])) * mt.exp(-dt * (alpha_h(v_e[i-1]) + beta_h(v_e[i-1])))
+
+        # rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
+        derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
+                                                                              v[i - 1])) / d_gating_var
+
+        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
+        Rhs_e[i-1] = rhs(I_s[i-1], m_e[i-1], n_e[i-1], h_e[i-1], v_e[i-1])
+
+        if counter != 0: # for calculating numerical solutions with various timesteps
+            dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
+            dv_e = Rhs_e[i-1] * dt
+        else: # for calculating "analitical" solution using Explicit Euler
+            dv = Rhs[i-1] * dt
+            dv_e = Rhs_e[i-1] * dt
+
+        v[i] = v[i-1] + dv
+        v_e[i] = v_e[i-1] + dv_e
+
+    return time_array, v, v_e
+
+
+
+
+start = time.clock()
+pl.figure()
+for dt in dtArray:
+    startMine = time.clock()
+
+    # grid arrays and parameters
+    '''
+    time_array = np.arange(0, T, dt)
+    v, m, n, h, Rhs = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
+    v_e, m_e, n_e, h_e, Rhs_e = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
     I_s = np.zeros(len(time_array))
+    '''
+
+    time_array, V, V_e = CalculateHH(dt)
+    #time_array = np.array(time_array)
+    #V = np.array(time_array)
+    #V_e = np.array(time_array)
+
+
+    if counter == 0:
+        analiticalSolution = np.zeros(len(time_array))
+
+
+    '''
+    m[0] = m_e[0] = m_inf(v_rest)
+    h[0] = h_e[0] = h_inf(v_rest)
+    n[0] = n_e[0] = n_inf(v_rest)
+    v[0] = v_e[0] = v_rest
+
+    #I_s = np.zeros(len(time_array))
     I_s[:] = 10
 
     dtStar = dt / 2
@@ -176,13 +229,13 @@ for dt in dtArray:
         v[i] = v[i-1] + dv
         v_e[i] = v_e[i-1] + dv_e
 
-        '''if (i % 2 == 0):
+        if (i % 2 == 0):
             dtStar = dt / 1
         else:
             dtStar = dt'''
 
     if (counter == 0):
-        analiticalSolution[:] = v[:]
+        analiticalSolution[:] = V[:]
         amplitude = np.amin(analiticalSolution)
         #print 'ana = ', analiticalSolution
         analiticalSolution[:] -= amplitude
@@ -190,28 +243,28 @@ for dt in dtArray:
 
             # dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
             # v_euler[i] = v_euler[i-1] + dv
-    Rhs[-1] = Rhs[-2]
-    Rhs_e[-1] = Rhs_e[-2]
+    #Rhs[-1] = Rhs[-2]
+    #Rhs_e[-1] = Rhs_e[-2]
 
     timeMine = time.clock() - startMine
+    #print timeMine
+
+    #print "amplitude %.2e" % amplitude
+    V[:] -= amplitude
+    V_e[:] -= amplitude
 
 
-    print "amplitude %.2e" % amplitude
-    v[:] -= amplitude
-    v_e[:] -= amplitude
-
-
-    errTmp = CalculateNorm(analiticalSolution, v)
-    errTmp_e = CalculateNorm(analiticalSolution, v_e)
+    errTmp = CalculateNorm(analiticalSolution, V)
+    errTmp_e = CalculateNorm(analiticalSolution, V_e)
 
     error.append(errTmp)
     error_e.append(errTmp_e)
     #timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
-        pl.plot(time_array, v, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
+        pl.plot(time_array, analiticalSolution, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
     elif (counter%3 == 0):
-        pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
+        pl.plot(time_array, V_e, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
     #pl.title('timestep = %.0e ms\n' % (dt))
     pl.legend(loc='upper right')
     pl.xlabel('time, ms')
@@ -220,6 +273,7 @@ for dt in dtArray:
     pl.grid('on')
     counter += 1
 
+print time.clock() - start
 
 #np.savetxt('error_derivative_explicit_euler.csv', np.c_[dtArray[1:], error[1:], timeMaxError[1:]], delimiter=',', header='timestep(ms),max_norm_error,time_of_max_norm_error(ms)')
 f, (ax1) = pl.subplots(1, 1)
