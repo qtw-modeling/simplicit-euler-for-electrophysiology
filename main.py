@@ -78,10 +78,10 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(1e-5, 1e-3, 50)
+dtArray = np.linspace(5e-6, 1e-2, 50)
 
 print dtArray
-T = 50.0
+T = 5.0
 
 @nb.jit(nopython=True)
 def rhs(i_s, m_, n_, h_, v_):
@@ -118,9 +118,28 @@ omega = 1 # relaxation parameter
 
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int32, \
                         nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
                         nb.float64[:]), nopython=True)
-def CalculateHH(time_array, size, dt, counter, m, n, h, v, Rhs, m_e, n_e, h_e, v_e, Rhs_e, I_s):
+def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
+    m[0] = m_inf(v_rest)
+    h[0] = h_inf(v_rest)
+    n[0] = n_inf(v_rest)
+    v[0] = v_rest
+
+    for i in range(1, size):
+        m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
+        n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
+        h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
+
+        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
+
+        dv = Rhs[i-1] * dt
+        v[i] = v[i-1] + dv
+
+
+
+@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int32, \
+                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
+def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
 
     '''
     v, m, n, h, Rhs = [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)],
@@ -129,46 +148,32 @@ def CalculateHH(time_array, size, dt, counter, m, n, h, v, Rhs, m_e, n_e, h_e, v
     I_s = np.zeros(len(time_array))
     '''
 
-    m[0] = m_e[0] = m_inf(v_rest)
-    h[0] = h_e[0] = h_inf(v_rest)
-    n[0] = n_e[0] = n_inf(v_rest)
-    v[0] = v_e[0] = v_rest
+    m[0] = m_inf(v_rest)
+    h[0] = h_inf(v_rest)
+    n[0] = n_inf(v_rest)
+    v[0] = v_rest
 
 
     dtStar = dt / 2
     for i in range(1, size):
-
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
 
-
-        m_e[i] = m_inf(v_e[i-1]) + (m_e[i-1] - m_inf(v_e[i-1])) * np.exp(-dt * (alpha_m(v_e[i-1]) + beta_m(v_e[i-1])))
-        n_e[i] = n_inf(v_e[i-1]) + (n_e[i-1] - n_inf(v_e[i-1])) * np.exp(-dt * (alpha_n(v_e[i-1]) + beta_n(v_e[i-1])))
-        h_e[i] = h_inf(v_e[i-1]) + (h_e[i-1] - h_inf(v_e[i-1])) * np.exp(-dt * (alpha_h(v_e[i-1]) + beta_h(v_e[i-1])))
-
-        # rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
         derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1])) / d_gating_var
-
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
-        Rhs_e[i-1] = rhs(I_s[i-1], m_e[i-1], n_e[i-1], h_e[i-1], v_e[i-1])
 
-        if counter != 0: # for calculating numerical solutions with various timesteps
-            dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
-            dv_e = Rhs_e[i-1] * dt
-        else: # for calculating "analitical" solution using Explicit Euler
-            dv = Rhs[i-1] * dt
-            dv_e = Rhs_e[i-1] * dt
-
+        dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
         v[i] = v[i-1] + dv
-        v_e[i] = v_e[i-1] + dv_e
-
 
 
 
 
 start = time.clock()
 pl.figure()
+
+
+timingEE, timingSIE = [], []
 for dt in dtArray:
     startMine = time.clock()
 
@@ -182,6 +187,7 @@ for dt in dtArray:
     time_array = np.arange(0, T, dt)
     SIZE = len(time_array)
     v = np.zeros(SIZE)
+    v_e = np.zeros(SIZE)
     m = np.zeros(SIZE)
     n = np.zeros(SIZE)
     h = np.zeros(SIZE)
@@ -193,7 +199,14 @@ for dt in dtArray:
     Rhs_e = np.zeros(SIZE) #[0. for i in range(size)]
     I_s = np.zeros(SIZE) #[10. for i in range(size)]
 
-    CalculateHH(time_array, SIZE, dt, counter, m, n, h, v, Rhs, m_e, n_e, h_e, v_e, Rhs_e, I_s)
+
+    startEE = time.clock()
+    CalculateHHusingExplicitEuler(time_array, SIZE, dt, counter, m, n, h, v_e, Rhs, I_s)
+    timingEE.append(time.clock() - startEE)
+
+    startSIE = time.clock()
+    CalculateHHusingSImplicitEuler(time_array, SIZE, dt, counter, m, n, h, v, Rhs, I_s)
+    timingSIE.append(time.clock() - startSIE)
 
 
     #time_array = np.array(time_array)
@@ -256,11 +269,6 @@ for dt in dtArray:
         analiticalSolution[:] -= amplitude
 
 
-            # dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
-            # v_euler[i] = v_euler[i-1] + dv
-    #Rhs[-1] = Rhs[-2]
-    #Rhs_e[-1] = Rhs_e[-2]
-
     timeMine = time.clock() - startMine
     #print timeMine
 
@@ -272,8 +280,8 @@ for dt in dtArray:
     errTmp = CalculateNorm(analiticalSolution, v)
     errTmp_e = CalculateNorm(analiticalSolution, v_e)
 
-    error.append(0)
-    error_e.append(0)
+    error.append(errTmp)
+    error_e.append(errTmp_e)
     #timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
@@ -291,7 +299,13 @@ for dt in dtArray:
 print 'time elapsed = %.2e sec' % (time.clock() - start)
 error = map(list, zip(*error))
 error_e = map(list, zip(*error_e))
-#np.savetxt('error_derivative_explicit_euler.csv', np.c_[dtArray[1:], error[1:], timeMaxError[1:]], delimiter=',', header='timestep(ms),max_norm_error,time_of_max_norm_error(ms)')
+
+speedup = np.array(timingEE[:]) * (np.array(timingSIE[:]))**(-1)
+np.savetxt('errors_3_types.csv', np.c_[dtArray[1:], error[0][1:], error_e[0][1:], error[1][1:], error_e[1][1:], error[2][1:], error_e[2][1:], timingSIE[1:], timingEE[1:]], fmt='%.2e', delimiter=',',\
+           header='timestep(ms),max_norm_error_SIE,max_norm_error_EE,RRMS_SIE,RRMS_EE,mixed_RRMS_max_norm_SIE,mixed_RRMS_max_norm_EE,timingSIE,timingEE')
+
+
+
 f, (ax1) = pl.subplots(1, 1)
 #ax1.plot(np.log(dtArray[1:]), np.log(error[1:]), 'k-o', linewidth=4, markersize = 15)
 #ax1.set_xlabel('ln(timestep)')
@@ -316,6 +330,7 @@ extraticks = [5]
 ax1.axhline(y=5, linewidth=4, color='r')
 #ax2.axhline(y=5, linewidth=4, color='r')
 #ax3.axhline(y=5, linewidth=4, color='r')
+
 
 
 '''
