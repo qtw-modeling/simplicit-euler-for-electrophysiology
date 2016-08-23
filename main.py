@@ -88,8 +88,8 @@ def rhs(i_s, m_, n_, h_, v_):
     return (1. / c) * (i_s - g_n * (m_) ** 3 * (h_) * (v_ - v_n) - g_k * (n_ ** 4) * (v_ - v_k) - g_l * (v_ - v_l))
 
 @nb.jit(nopython=True)
-def rhs_gating_vars(alpha_, beta_, v_, var_):
-    return alpha_(v_) * (1 - var_) - beta_(v_) * var_
+def rhs_gating_vars(alpha, beta, V, var):
+    return alpha * (1 - var) - beta * var
 
 
 step_v = 1e-4
@@ -116,19 +116,32 @@ amplitude = 0
 counter = 0
 omega = 1 # relaxation parameter
 
+
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int32, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-                        nb.float64[:]), nopython=True)
+                       nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
+                      nb.float64[:]), nopython=True)
 def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
     m[0] = m_inf(v_rest)
     h[0] = h_inf(v_rest)
     n[0] = n_inf(v_rest)
     v[0] = v_rest
 
+    dtStar = dt / 2.
     for i in range(1, size):
+        '''
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
+        '''
+
+        vPrevious = v[i-1]
+        derivative_m = 1.0 / d_gating_var * (rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1] + d_gating_var) -  rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]))
+        derivative_n = 1.0 / d_gating_var * (rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1] + d_gating_var) -  rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1]))
+        derivative_h = 1.0 / d_gating_var * (rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1] + d_gating_var) -  rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1]))
+
+        m[i] = m[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]) * dt / (1 - dtStar * derivative_m)
+        n[i] = n[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, n[i-1]) * dt / (1 - dtStar * derivative_n)
+        h[i] = h[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, h[i-1]) * dt / (1 - dtStar * derivative_h)
 
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
 
@@ -136,9 +149,8 @@ def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs
         v[i] = v[i-1] + dv
 
 
-
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int32, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
+                  nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
 def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
 
     '''
@@ -156,9 +168,19 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
 
     dtStar = dt / 2
     for i in range(1, size):
+        vPrevious = v[i-1]
+        derivative_m = 1.0 / d_gating_var * (rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1] + d_gating_var) -  rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]))
+        derivative_n = 1.0 / d_gating_var * (rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1] + d_gating_var) -  rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1]))
+        derivative_h = 1.0 / d_gating_var * (rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1] + d_gating_var) -  rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1]))
+
+        m[i] = m[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]) * dt / (1 - dtStar * derivative_m)
+        n[i] = n[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, n[i-1]) * dt / (1 - dtStar * derivative_n)
+        h[i] = h[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, h[i-1]) * dt / (1 - dtStar * derivative_h)
+        '''
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
+        '''
 
         derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1])) / d_gating_var
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
@@ -333,7 +355,7 @@ ax1.axhline(y=5, linewidth=4, color='r')
 
 
 
-'''
+
 # calc the trendline
 z = np.polyfit(dtArray[1:7], error[1:7], 1)
 p = np.poly1d(z)
@@ -357,7 +379,7 @@ ax1.legend(loc='upper left')
 
 #np.savetxt('error_explicit_euler.csv', np.c_[dtArray[1:], error[1:], timeMaxError[1:]], delimiter=',', header='timestep(ms),max_norm_error,time_of_max_norm_error(ms)')
 '''
-
+'''
 pl.figure()
 startMine = time.clock()
 for i in range(1, len(time_array)):
