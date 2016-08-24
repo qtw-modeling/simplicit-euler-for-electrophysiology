@@ -1,4 +1,4 @@
-from __future__ import division
+#from __future__ import division
 import matplotlib
 import matplotlib.pyplot as pl
 import numpy as np
@@ -58,14 +58,25 @@ def CalculateNorm(arrayAnalitical, array2):
         normArray.append(delta)
 
     RRHS_error = np.sqrt(numerator / denumerator)
+     # making error a very big number so we can polyfit the error without issues
 
     # calculating max|o| error
     normArray = np.array(normArray)
     max_module = np.amax(normArray)
     amplitude = np.amax(arrayAnalitical) - np.amin(arrayAnalitical)
-    indexMax = np.argmax(normArray)
 
-    return 100 * RRHS_error, 100*max_module / amplitude, 100 * max_module / np.sqrt(( (len(arrayAnalitical))**(-1)) * denumerator)
+
+    #print 100 * RRHS_error
+    RRHS_error_in_percents = 100*RRHS_error
+    max_module_error_in_percents = 100*max_module / amplitude
+    mixed_error_in_percents = 100*max_module / np.sqrt(( (len(arrayAnalitical))**(-1)) * denumerator)
+
+    listOfErrors = [RRHS_error_in_percents, max_module_error_in_percents, mixed_error_in_percents]
+    for i in range(len(listOfErrors)):
+        if mt.isnan(listOfErrors[i]) == True:
+            listOfErrors[i] = 1e5
+
+    return tuple(listOfErrors)
 
 
 
@@ -78,18 +89,18 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(5e-6, 1e-2, 50)
+dtArray = np.linspace(1e-5, 2e-2, 20)
 
 print dtArray
-T = 5.0
+T = 50.0
 
 @nb.jit(nopython=True)
 def rhs(i_s, m_, n_, h_, v_):
     return (1. / c) * (i_s - g_n * (m_) ** 3 * (h_) * (v_ - v_n) - g_k * (n_ ** 4) * (v_ - v_k) - g_l * (v_ - v_l))
 
 @nb.jit(nopython=True)
-def rhs_gating_vars(alpha, beta, V, var):
-    return alpha * (1 - var) - beta * var
+def rhs_gating_vars(alpha_, beta_, v_, var_):
+    return alpha_(v_) * (1 - var_) - beta_(v_) * var_
 
 
 step_v = 1e-4
@@ -116,32 +127,19 @@ amplitude = 0
 counter = 0
 omega = 1 # relaxation parameter
 
-
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int32, \
-                       nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-                      nb.float64[:]), nopython=True)
+                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
+                        nb.float64[:]), nopython=True)
 def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
     m[0] = m_inf(v_rest)
     h[0] = h_inf(v_rest)
     n[0] = n_inf(v_rest)
     v[0] = v_rest
 
-    dtStar = dt / 2.
     for i in range(1, size):
-        '''
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
-        '''
-
-        vPrevious = v[i-1]
-        derivative_m = 1.0 / d_gating_var * (rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1] + d_gating_var) -  rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]))
-        derivative_n = 1.0 / d_gating_var * (rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1] + d_gating_var) -  rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1]))
-        derivative_h = 1.0 / d_gating_var * (rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1] + d_gating_var) -  rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1]))
-
-        m[i] = m[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]) * dt / (1 - dtStar * derivative_m)
-        n[i] = n[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, n[i-1]) * dt / (1 - dtStar * derivative_n)
-        h[i] = h[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, h[i-1]) * dt / (1 - dtStar * derivative_h)
 
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
 
@@ -149,8 +147,9 @@ def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs
         v[i] = v[i-1] + dv
 
 
+
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int32, \
-                  nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
+                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
 def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
 
     '''
@@ -168,19 +167,9 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
 
     dtStar = dt / 2
     for i in range(1, size):
-        vPrevious = v[i-1]
-        derivative_m = 1.0 / d_gating_var * (rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1] + d_gating_var) -  rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]))
-        derivative_n = 1.0 / d_gating_var * (rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1] + d_gating_var) -  rhs_gating_vars(alpha_n(vPrevious), beta_n(vPrevious), vPrevious, n[i-1]))
-        derivative_h = 1.0 / d_gating_var * (rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1] + d_gating_var) -  rhs_gating_vars(alpha_h(vPrevious), beta_h(vPrevious), vPrevious, h[i-1]))
-
-        m[i] = m[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, m[i-1]) * dt / (1 - dtStar * derivative_m)
-        n[i] = n[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, n[i-1]) * dt / (1 - dtStar * derivative_n)
-        h[i] = h[i-1] + rhs_gating_vars(alpha_m(vPrevious), beta_m(vPrevious), vPrevious, h[i-1]) * dt / (1 - dtStar * derivative_h)
-        '''
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
-        '''
 
         derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1])) / d_gating_var
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
@@ -302,6 +291,8 @@ for dt in dtArray:
     errTmp = CalculateNorm(analiticalSolution, v)
     errTmp_e = CalculateNorm(analiticalSolution, v_e)
 
+    #print errTmp, ' ', errTmp_e
+
     error.append(errTmp)
     error_e.append(errTmp_e)
     #timeMaxError.append(indexErrTpm * dt)
@@ -333,43 +324,91 @@ f, (ax1) = pl.subplots(1, 1)
 #ax1.set_xlabel('ln(timestep)')
 #ax1.set_ylabel('ln(absolute error)')
 ax1.grid('on')
-ax1.plot((dtArray[1:]), (error[0][1:]), 'b-o', label='Simplified Backward Euler', linewidth=4, markersize = 10)
-ax1.plot((dtArray[1:]), (error_e[0][1:]), 'g-o', label='Forward Euler', linewidth=4, markersize = 10)
+ax1.plot((error[0][1:]), (dtArray[1:]), 'bo', label='Simplified Backward Euler', linewidth=4, markersize = 10)
+ax1.plot((error_e[0][1:]), (dtArray[1:]), 'go', label='Forward Euler', linewidth=4, markersize = 10)
 ax1.legend()
 
-ax1.plot((dtArray[1:]), (error[1][1:]), 'b-s', label='Simplified Backward Euler', linewidth=4, markersize = 10)
-ax1.plot((dtArray[1:]), (error_e[1][1:]), 'g-s', label='Forward Euler', linewidth=4, markersize = 10)
+ax1.plot((error[1][1:]), (dtArray[1:]), 'bs', label='Simplified Backward Euler', linewidth=4, markersize = 10)
+ax1.plot((error_e[1][1:]), (dtArray[1:]), 'gs', label='Forward Euler', linewidth=4, markersize = 10)
 ax1.grid('on')
 #ax2.legend()
 
-ax1.plot((dtArray[1:]), (error[2][1:]), 'b-v', label='Simplified Backward Euler', linewidth=4, markersize = 10)
-ax1.plot((dtArray[1:]), (error_e[2][1:]), 'g-v', label='Forward Euler', linewidth=4, markersize = 10)
+ax1.plot((error[2][1:]), dtArray[1:], 'bv', label='Simplified Backward Euler', linewidth=4, markersize=10)
+ax1.plot((error_e[2][1:]), dtArray[1:], 'gv', label='Forward Euler', linewidth=4, markersize=10)
 #ax1.grid('on')
 #ax3.legend()
-ax1.set_ylim([0, 15])
+#ax1.set_xlim([0., error[2][4]])
 extraticks = [5]
 #ax1.set_xticks(list(ax1.xticks()[0]) + extraticks)
-ax1.axhline(y=5, linewidth=4, color='r')
+#ax1.axhline(y=5, linewidth=4, color='r')
 #ax2.axhline(y=5, linewidth=4, color='r')
 #ax3.axhline(y=5, linewidth=4, color='r')
 
 
+def CalculatePolyfit(arrayX, arrayY, order):
+    z = np.polyfit(arrayX, arrayY, order)
+    p = np.poly1d(z)
+    return p # is function of polynom type
 
 
+left, right = 1, 19
+orderOfpolynomial = 1
 # calc the trendline
-z = np.polyfit(dtArray[1:7], error[1:7], 1)
-p = np.poly1d(z)
-ax1.plot((dtArray[1:]), p((dtArray[1:])),"b-", linewidth=4)
-# the line equation:
+'''for i in range(3):
+    ax1.plot(error[i][left:right], CalculatePolyfit(error[i][left:], dtArray[left:], 1)(error[i][left:])[0], 'b-', linewidth=4)
+    ax1.plot(error_e[i][left:right], CalculatePolyfit(error_e[i][left:], dtArray[left:], 1)(error_e[i][left:])[0], 'g-', linewidth=4)'''
 
-ax1.text(0.01, 45e1, "y = (%.2e)*x + (%.2e)" %(z[0], z[1]), color='b', fontsize = 20, fontweight='bold')
 
+
+
+
+def CalculateStepUsingError(err, a, b):
+    return 1. / a * (err - b)
+
+def CalculateTimingUsingTimestep(dt, c, d):
+    return 1. / c * (dt - d)
+
+
+list_of_errors = [1., 3., 5.]
+
+dt_for_errors_list = []
+dt_for_errors_list_e = []
+for i in range(1):
+    dt_for_errors_list.append([CalculatePolyfit(error[i][left:], dtArray[left:], 1)(elem) for elem in list_of_errors])
+    dt_for_errors_list_e.append([CalculatePolyfit(error_e[i][left:], dtArray[left:], 1)(elem) for elem in list_of_errors])
+
+computational_time_EE_list = [CalculatePolyfit(dtArray[left:], timingEE[left:], 1)(f) for f in dt_for_errors_list]
+computational_time_SIE_list = [CalculatePolyfit(dtArray[left:], timingSIE[left:], 1)(f) for f in dt_for_errors_list_e]
+
+speedup_list = np.array(computational_time_SIE_list) / np.array(computational_time_EE_list)
+
+
+print speedup_list
+
+
+
+
+
+
+
+#np.savetxt('errors_135_3types.csv',
+
+
+
+#ax1.set_xlim([0., 15.])
+#ax1.set_ylim(dtArray[0], dtArray[-1])
+#ax1.text(0.01, 45e1, "y = (%.2e)*x + (%.2e)" %(z[0], z[1]), color='b', fontsize = 20, fontweight='bold')
+
+
+
+'''
 # calc the trendline
-z_e = np.polyfit(dtArray[1:7], error_e[1:7], 1)
+z_e = np.polyfit(error_e[1:rightElementForPolyfit], dtArray[1:rightElementForPolyfit], 1)
 p_e = np.poly1d(z_e)
 ax1.plot((dtArray[1:]), p_e((dtArray[1:])),"g-", linewidth=4)
 # the line equation:
 ax1.text(0.01, 40e1, "y = (%.2e)*x + (%.2e)" %(z_e[0], z_e[1]), color='g', fontsize = 20, fontweight='bold')
+'''
 '''
 ax1.set_xlabel('timestep, ms')
 ax1.set_ylabel('RRMS error, %')
@@ -421,4 +460,4 @@ pl.legend(('voltage spiking','input signal strength'),"upper right")
 pl.xlabel("time, s --->")
 pl.ylabel("potential difference,V (mV) ---->")
 '''
-#pl.show()
+pl.show()
