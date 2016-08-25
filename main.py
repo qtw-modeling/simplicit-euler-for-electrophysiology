@@ -89,10 +89,10 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(1e-5, 2e-2, 20)
+dtArray = np.linspace(1e-4, 1e-2, 40)
 
 print dtArray
-T = 50.0
+T = 10.0
 
 @nb.jit(nopython=True)
 def rhs(i_s, m_, n_, h_, v_):
@@ -314,7 +314,7 @@ error = map(list, zip(*error))
 error_e = map(list, zip(*error_e))
 
 speedup = np.array(timingEE[:]) * (np.array(timingSIE[:]))**(-1)
-np.savetxt('errors_3_types.csv', np.c_[dtArray[1:], error[0][1:], error_e[0][1:], error[1][1:], error_e[1][1:], error[2][1:], error_e[2][1:], timingSIE[1:], timingEE[1:]], fmt='%.2e', delimiter=',',\
+np.savetxt('errors_3_types_T%.1fsec.csv' % T, np.c_[dtArray[1:], error[0][1:], error_e[0][1:], error[1][1:], error_e[1][1:], error[2][1:], error_e[2][1:], timingSIE[1:], timingEE[1:]], fmt='%.2e', delimiter=',',\
            header='timestep(ms),max_norm_error_SIE,max_norm_error_EE,RRMS_SIE,RRMS_EE,mixed_RRMS_max_norm_SIE,mixed_RRMS_max_norm_EE,timingSIE,timingEE')
 
 
@@ -337,7 +337,7 @@ ax1.plot((error[2][1:]), dtArray[1:], 'bv', label='Simplified Backward Euler', l
 ax1.plot((error_e[2][1:]), dtArray[1:], 'gv', label='Forward Euler', linewidth=4, markersize=10)
 #ax1.grid('on')
 #ax3.legend()
-#ax1.set_xlim([0., error[2][4]])
+ax1.set_xlim([0., 15.])
 extraticks = [5]
 #ax1.set_xticks(list(ax1.xticks()[0]) + extraticks)
 #ax1.axhline(y=5, linewidth=4, color='r')
@@ -351,7 +351,7 @@ def CalculatePolyfit(arrayX, arrayY, order):
     return p # is function of polynom type
 
 
-left, right = 1, 19
+left, right = 1, 7
 orderOfpolynomial = 1
 # calc the trendline
 '''for i in range(3):
@@ -373,18 +373,21 @@ list_of_errors = [1., 3., 5.]
 
 dt_for_errors_list = []
 dt_for_errors_list_e = []
-for i in range(1):
-    dt_for_errors_list.append([CalculatePolyfit(error[i][left:], dtArray[left:], 1)(elem) for elem in list_of_errors])
-    dt_for_errors_list_e.append([CalculatePolyfit(error_e[i][left:], dtArray[left:], 1)(elem) for elem in list_of_errors])
+for i in range(3):
+    dt_for_errors_list.append([CalculatePolyfit(error[i][left:right], dtArray[left:right], 1)(elem) for elem in list_of_errors])
+    dt_for_errors_list_e.append([CalculatePolyfit(error_e[i][left:right], dtArray[left:right], 1)(elem) for elem in list_of_errors])
 
-computational_time_EE_list = [CalculatePolyfit(dtArray[left:], timingEE[left:], 1)(f) for f in dt_for_errors_list]
-computational_time_SIE_list = [CalculatePolyfit(dtArray[left:], timingSIE[left:], 1)(f) for f in dt_for_errors_list_e]
+computational_time_SIE_list = [CalculatePolyfit(dtArray[left:right], timingSIE[left:right], 1)(f) for f in dt_for_errors_list]
+computational_time_EE_list = [CalculatePolyfit(dtArray[left:right], timingEE[left:right], 1)(f) for f in dt_for_errors_list_e]
 
 speedup_list = np.array(computational_time_SIE_list) / np.array(computational_time_EE_list)
 
 
-print speedup_list
+#print speedup_list
 
+np.savetxt('speedup_T%.1fsec.csv' % T, np.c_[list_of_errors, dt_for_errors_list[0], dt_for_errors_list[1], dt_for_errors_list[2], dt_for_errors_list_e[0],\
+                                dt_for_errors_list_e[1], dt_for_errors_list_e[2], computational_time_SIE_list, computational_time_EE_list, speedup_list], fmt='%.2e', delimiter=',',\
+           header='error(%),dt_SIE_RRMS,dt_SIE_max_module,dt_SIE_mixed,dt_EE_RRMS,dt_EE_max_module,dt_EE_mixed,computational_time_SIE,computational_time_EE,speedup')
 
 
 
