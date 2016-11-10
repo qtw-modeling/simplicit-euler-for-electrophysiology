@@ -15,31 +15,47 @@ font = {'family': 'normal',
 matplotlib.rc('font', **font)
 
 @nb.jit(nopython=True)
-def alpha_n(val): return 0.01 * (-val + 10) / (mt.exp((-val + 10) / 10) - 1) if val != 10 else 0.1
+def alpha_n(val): return (1)*0.01 * (-val + 10) / (mt.exp((-val + 10) / 10) - 1) if val != 10 else 0.1
 
 @nb.jit(nopython=True)
-def beta_n(val):  return 0.125 * mt.exp(-val / 80)
+def beta_n(val):  return (1)*0.125 * mt.exp(-val / 80)
 
 @nb.jit(nopython=True)
 def n_inf(val): return alpha_n(val) / (alpha_n(val) + beta_n(val))
 
 @nb.jit(nopython=True)
-def alpha_m(val): return (1) * 0.1 * (-val + 25) / (mt.exp((-val + 25) / 10) - 1) if val != 25 else 5
+def alpha_m(val): return (10) * 0.1 * (-val + 25) / (mt.exp((-val + 25) / 10) - 1) if val != 25 else 5
 
 @nb.jit(nopython=True)
-def beta_m(val): return (1.)*4 * mt.exp(-val / 18)
+def beta_m(val): return (10)*4 * mt.exp(-val / 18)
 
 @nb.jit(nopython=True)
 def m_inf(val): return alpha_m(val) / (alpha_m(val) + beta_m(val))
 
 @nb.jit(nopython=True)
-def alpha_h(val): return 0.07 * mt.exp(-val / 20)
+def alpha_h(val): return (5e-1) * 0.07 * mt.exp(-val / 20)
 
 @nb.jit(nopython=True)
-def beta_h(val): return 1 / (mt.exp((-val + 30) / 10) + 1)
+def beta_h(val): return (5e-1) * 1 / (mt.exp((-val + 30) / 10) + 1)
 
 @nb.jit(nopython=True)
 def h_inf(val): return alpha_h(val) / (alpha_h(val) + beta_h(val))
+
+@nb.jit(nopython=True)
+def qu_inf(val):
+    return 1./ (1 + np.exp((val + 59.37)/13.1))
+
+@nb.jit(nopython=True)
+def er_inf(val):
+    return 1./ (1 + np.exp(-(val - 10.93)/19.7))
+
+@nb.jit(nopython=True)
+def tau_q(val):
+    return 1.01*10e-4 + 6.517*1e-4/(0.5686*np.exp(-0.08161*(val+49)) + 0.7174*np.exp(0.2719*(val + 50.93)))
+
+@nb.jit(nopython=True)
+def tau_er(val):
+    return 2.98*1e-3 + 1.559*1e-4/(1.037*np.exp(0.09*(val + 30.61)) + 0.369*np.exp(-0.12 *(val + 23.84)))
 
 
 @nb.jit(nopython=True)
@@ -76,19 +92,22 @@ def CalculateNorm(arrayAnalitical, array2):
 g_n = 1200
 g_k = 36
 g_l = 0.3
+g_to = 0*1e-5
 v_n = 115
 v_k = -12
 v_l = 10.613
+v_to = -15.
 c = 1
 
-dtArray = np.linspace(1e-5, 1e-3, 10)
+dtArray = np.array([1./2**n for n in range(15, 14, -1)])
 
 print dtArray
-T = 10
+T = 20
 
-@nb.jit(nopython=True)
-def rhs(i_s, m_, n_, h_, v_, c_):
-    return (1. / c_) * (i_s - g_n * (m_) ** 3 * (h_) * (v_ - v_n) - g_k * (n_ ** 4) * (v_ - v_k) - g_l * (v_ - v_l))
+@nb.jit(nb.float64(nb.float64,nb.float64,nb.float64,nb.float64,nb.float64,nb.float64,nb.float64,nb.float64), nopython=True)
+def rhs(i_s, m_, n_, h_, r_, q_, v_, c_):
+    return (1. / c_) * (i_s - g_n * (m_) ** 3 * (h_) * (v_ - v_n) - g_k * (n_ ** 4) * (v_ - v_k) - g_l * (v_ - v_l)\
+                        - 0*g_to *q_*r_*(v_ - v_to))
 
 @nb.jit(nopython=True)
 def rhs_gating_vars(alpha_, beta_, v_, var_):
@@ -99,20 +118,7 @@ step_v = 1e-4
 d_gating_var = 1e-7
 v_rest = 0
 
-'''
-startEuler = time.clock()
-for i in range(1, len(time_array)):
 
-    m += (alpha_m(v_euler[i-1]) * (1-m) - beta_m(v_euler[i-1])*m) * dt
-    n += (alpha_n(v_euler[i-1]) * (1-n) - beta_n(v_euler[i-1])*n) * dt
-    h += (alpha_h(v_euler[i-1]) * (1-h) - beta_h(v_euler[i-1])*h) * dt
-
-    #print alpha_m(v_euler[i-1]), alpha_n(v_euler[i-1]), alpha_h(v_euler[i-1])
-    dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
-    v_euler[i] = v_euler[i - 1] + dv
-
-timeEuler = time.clock() - startEuler
-'''
 
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 amplitude = 0
@@ -121,11 +127,15 @@ omega = 1 # relaxation parameter
 
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
                         nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-                        nb.float64[:]), nopython=True)
-def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
+                        nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
+def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, q, r, v, Rhs, I_s):
     m[0] = m_inf(v_rest)
     h[0] = h_inf(v_rest)
     n[0] = n_inf(v_rest)
+
+    q[0] = qu_inf(v_rest)
+    r[0] = er_inf(v_rest)
+
     v[0] = v_rest
 
     for i in xrange(1, size):
@@ -133,7 +143,10 @@ def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
 
-        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c)
+        q[i] = qu_inf(v[i-1]) + (q[i-1] - qu_inf(v[i-1])) * np.exp(-dt /tau_q(v[i-1]))
+        h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt /tau_er(v[i-1]))
+
+        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], q[i-1], r[i-1], v[i-1], c)
 
         dv = Rhs[i-1] * dt
         v[i] = v[i-1] + dv
@@ -141,8 +154,8 @@ def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs
 
 
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
-def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
+                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:],nb.float64[:],nb.float64[:],nb.float64[:],nb.float64[:]), nopython=True)
+def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, q, r, v, Rhs, I_s):
 
     '''
     v, m, n, h, Rhs = [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)],
@@ -154,6 +167,9 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
     m[0] = m_inf(v_rest)
     h[0] = h_inf(v_rest)
     n[0] = n_inf(v_rest)
+    q[0] = qu_inf(v_rest)
+    r[0] = er_inf(v_rest)
+
     v[0] = v_rest
 
 
@@ -163,10 +179,16 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
 
-        derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
-        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c)
+        q[i] = qu_inf(v[i - 1]) + (q[i - 1] - qu_inf(v[i - 1])) * np.exp(-dt / tau_q(v[i - 1]))
+        h[i] = h_inf(v[i - 1]) + (h[i - 1] - h_inf(v[i - 1])) * np.exp(-dt / tau_er(v[i - 1]))
+
+        derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], q[i], r[i], v[i - 1] + d_gating_var, c) -\
+                      rhs(I_s[i - 1], m[i], n[i], h[i], q[i], r[i], v[i - 1], c)) / d_gating_var
+        Rhs[i - 1] = rhs(I_s[i - 1], m[i - 1], n[i - 1], h[i - 1], q[i - 1], r[i - 1], v[i - 1], c)
 
         dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
+        #dv = Rhs[i-1]**2 * dt/ rhs(I_s[i-1], m[i-1], n[i-1],h[i-1],v[i-1] - dt*) // RK style, TODO
+
         v[i] = v[i-1] + dv
 
 
@@ -193,11 +215,17 @@ for dt in dtArray:
     m = np.zeros(SIZE)
     n = np.zeros(SIZE)
     h = np.zeros(SIZE)
+    q = np.zeros(SIZE)
+    r = np.zeros(SIZE)
+
     Rhs = np.zeros(SIZE) # [0. for i in range(size)]
     v_e = 0 * np.ones(SIZE) #[0. for i in range(size)]
     m_e = np.zeros(SIZE) #[0. for i in range(size)]
     h_e = np.zeros(SIZE) # [0. for i in range(size)]
     n_e = np.zeros(SIZE) #[0. for i in range(size)]
+    q_e = np.zeros(SIZE)
+    r_e = np.zeros(SIZE)
+
     Rhs_e = np.zeros(SIZE) #[0. for i in range(size)]
     I_s = np.zeros(SIZE) #[10. for i in range(size)]
     I_s[:] = 10
@@ -206,12 +234,12 @@ for dt in dtArray:
     NUM_LAUNCHES = 10
     startEE = time.clock()
     for i in range(NUM_LAUNCHES):
-        CalculateHHusingExplicitEuler(time_array, SIZE, dt, counter, m, n, h, v_e, Rhs, I_s)
+        CalculateHHusingExplicitEuler(time_array, SIZE, dt, counter, m_e, n_e, h_e, q_e, r_e, v_e, Rhs, I_s)
     timingEE.append((time.clock() - startEE)/NUM_LAUNCHES)
 
     startSIE = time.clock()
     for i in range(NUM_LAUNCHES):
-        CalculateHHusingSImplicitEuler(time_array, SIZE, dt, counter, m, n, h, v, Rhs, I_s)
+        CalculateHHusingSImplicitEuler(time_array, SIZE, dt, counter, m, n, h, q, r, v, Rhs, I_s)
     timingSIE.append((time.clock() - startSIE)/NUM_LAUNCHES)
 
 
@@ -292,7 +320,7 @@ for dt in dtArray:
 
     if counter == 0:
         pl.plot(time_array, analiticalSolution, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
-    elif (counter%3 == 0):
+    elif (counter%5 == 0):
         pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
     #pl.title('timestep = %.0e ms\n' % (dt))
     pl.legend(loc='upper right')
@@ -310,7 +338,7 @@ def CalculatePolyfit(arrayX, arrayY, order):
     return p # is function of polynom type
 
 
-left, right = 2, 20
+left, right = 1, 4
 orderOfpolynomial = 1
 # calc the trendline
 '''for i in range(3):
@@ -322,6 +350,7 @@ error_e = np.array(error_e)
 #error = map(list, zip(*error))
 #error_e = map(list, zip(*error_e))
 
+'''
 list_of_errors = [1., 3., 5.]
 LEN = len(list_of_errors)
 NUM_ERROR_TYPES = 3
@@ -370,31 +399,31 @@ np.savetxt('errors_3_types_%.1fsec.csv' % T, np.c_[dtArray[1:],\
            header='timestep(ms),RRMS_EE,RRMS_SIE,max_mod_EE, max_mod_SIE,mixed_EE,mixed_SIE,timingEE,timingSIE')
 
 
-
-f, (ax1) = pl.subplots(1, 1)
+'''
+f, (ax1,ax2,ax3) = pl.subplots(1, 3)
 #ax1.plot(np.log(dtArray[1:]), np.log(error[1:]), 'k-o', linewidth=4, markersize = 15)
 #ax1.set_xlabel('ln(timestep)')
 #ax1.set_ylabel('ln(absolute error)')
 ax1.grid('on')
-ax1.plot((dtArray[1:]), (error[1:,1]), 'b-o', label='Simplified Backward Euler', linewidth=4, markersize = 10)
-ax1.plot((dtArray[1:]), (error_e[1:,1]), 'g-o', label='Forward Euler', linewidth=4, markersize = 10)
+ax1.plot((dtArray[1:]), (error[1:,0]), 'b-o', label='Simplified Backward Euler', linewidth=4, markersize = 10)
+ax1.plot((dtArray[1:]), (error_e[1:,0]), 'g-o', label='Forward Euler', linewidth=4, markersize = 10)
 ax1.legend()
-'''
-ax1.plot((dtArray[1:]), (error[1][1:]), 'b-s', label='Simplified Backward Euler', linewidth=4, markersize = 10)
-ax1.plot((dtArray[1:]), (error_e[1][1:]), 'g-s', label='Forward Euler', linewidth=4, markersize = 10)
-ax1.grid('on')
-#ax2.legend()
 
-ax1.plot((dtArray[1:]), (error[2][1:]), 'b-v', label='Simplified Backward Euler', linewidth=4, markersize = 10)
-ax1.plot((dtArray[1:]), (error_e[2][1:]), 'g-v', label='Forward Euler', linewidth=4, markersize = 10)
-#ax1.grid('on')
-#ax3.legend()
-ax1.set_ylim([0, 15])
-extraticks = [5]'''
+ax2.plot((dtArray[1:]), (error[1:,1]), 'b-s', label='Simplified Backward Euler', linewidth=4, markersize = 10)
+ax2.plot((dtArray[1:]), (error_e[1:,1]), 'g-s', label='Forward Euler', linewidth=4, markersize = 10)
+ax2.grid('on')
+ax2.legend()
+
+ax3.plot((dtArray[1:]), (error[1:,2]), 'b-v', label='Simplified Backward Euler', linewidth=4, markersize = 10)
+ax3.plot((dtArray[1:]), (error_e[1:,2]), 'g-v', label='Forward Euler', linewidth=4, markersize = 10)
+ax3.grid('on')
+ax3.legend()
+#ax1.set_ylim([0, 15])
+#extraticks = [5]'''
 #ax1.set_xticks(list(ax1.xticks()[0]) + extraticks)
 ax1.axhline(y=5, linewidth=4, color='r')
-#ax2.axhline(y=5, linewidth=4, color='r')
-#ax3.axhline(y=5, linewidth=4, color='r')
+ax2.axhline(y=5, linewidth=4, color='r')
+ax3.axhline(y=5, linewidth=4, color='r')
 
 
 '''
