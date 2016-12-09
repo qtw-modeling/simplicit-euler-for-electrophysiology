@@ -68,7 +68,12 @@ def CalculateNorm(arrayAnalitical, array2):
     amplitude = np.amax(arrayAnalitical) - np.amin(arrayAnalitical)
     indexMax = np.argmax(normArray)
 
-    return list((100 * RRHS_error, 100*max_module / amplitude, 100 * max_module / np.sqrt(( (len(arrayAnalitical))**(-1)) * denumerator)))
+    returnList = list((100 * RRHS_error, max_module, 100 * max_module / np.sqrt(( (len(arrayAnalitical))**(-1)) * denumerator)))
+    for i in range(3):
+        if np.isnan(returnList[i]) == True:
+            returnList[i] = 100500
+
+    return returnList
 
 
 
@@ -81,7 +86,8 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = np.linspace(1e-5, 1e-3, 10)
+
+dtArray = np.array([2**n for n in range(-20, -11, 1)])
 
 print dtArray
 T = 10
@@ -166,7 +172,10 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
         derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c)
 
-        dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
+        A = 0.5*dt*derivative
+        ReK = Rhs[i-1]*(1 - A)/(1 - 2*A + 2*A**2)
+
+        dv = dt * ReK
         v[i] = v[i-1] + dv
 
 
@@ -203,7 +212,7 @@ for dt in dtArray:
     I_s[:] = 10
 
 
-    NUM_LAUNCHES = 10
+    NUM_LAUNCHES = 1
     startEE = time.clock()
     for i in range(NUM_LAUNCHES):
         CalculateHHusingExplicitEuler(time_array, SIZE, dt, counter, m, n, h, v_e, Rhs, I_s)
@@ -392,7 +401,8 @@ ax1.plot((dtArray[1:]), (error_e[2][1:]), 'g-v', label='Forward Euler', linewidt
 ax1.set_ylim([0, 15])
 extraticks = [5]'''
 #ax1.set_xticks(list(ax1.xticks()[0]) + extraticks)
-ax1.axhline(y=5, linewidth=4, color='r')
+ax1.axhline(y=1, linewidth=4, color='r')
+ax1.set_ylim([0, 5])
 #ax2.axhline(y=5, linewidth=4, color='r')
 #ax3.axhline(y=5, linewidth=4, color='r')
 
