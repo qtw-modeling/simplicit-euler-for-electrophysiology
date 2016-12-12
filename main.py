@@ -87,7 +87,7 @@ v_l = 10.613
 c = 1
 
 
-dtArray = np.array([2**n for n in range(-20, -11, 1)])
+dtArray = np.array([2**n for n in range(-15, -4, 1)])
 
 print dtArray
 T = 10
@@ -98,7 +98,7 @@ def rhs(i_s, m_, n_, h_, v_, c_):
 
 @nb.jit(nopython=True)
 def rhs_gating_vars(alpha_, beta_, v_, var_):
-    return alpha_(v_) * (1 - var_) - beta_(v_) * var_
+    return alpha_ * (1 - var_) - beta_ * var_
 
 
 step_v = 1e-4
@@ -123,7 +123,7 @@ timeEuler = time.clock() - startEuler
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 amplitude = 0
 counter = 0
-omega = 1 # relaxation parameter
+omega = 0.5 # relaxation parameter
 
 @nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
                         nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
@@ -165,16 +165,25 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
 
     dtStar = dt / 2
     for i in xrange(1, size):
-        m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
-        n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
-        h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
+
+        derivative_m = 1. / 1e-5 * (rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1] + 1e-5) \
+                                    - rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1]))
+        derivative_n = 1. / 1e-5 * (rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1] + 1e-5) \
+                                    - rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1]))
+        derivative_h = 1. / 1e-5 * (rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1] + 1e-5) \
+                                    - rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1]))
+
+        m[i] = m[i-1] + dt * rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1]) / (1 - dt * omega  * derivative_m)
+        n[i] = n[i-1] + dt * rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1]) / (1 - dt * omega * derivative_n)
+        h[i] = h[i-1] + dt * rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1]) / (1 - dt * omega * derivative_h)
+
 
         derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
         Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c)
 
-        A = 0.5*dt*derivative
-        ReK = Rhs[i-1]*(1 - A)/(1 - 2*A + 2*A**2)
-
+        A = omega*dt*derivative
+        #ReK = Rhs[i-1]*(1 - A)/(1 - 2*A + 2*A**2)  #CROS scheme
+        ReK = Rhs[i - 1] * 1. / (1 - A)
         dv = dt * ReK
         v[i] = v[i-1] + dv
 
@@ -385,8 +394,8 @@ f, (ax1) = pl.subplots(1, 1)
 #ax1.set_xlabel('ln(timestep)')
 #ax1.set_ylabel('ln(absolute error)')
 ax1.grid('on')
-ax1.plot((dtArray[1:]), (error[1:,1]), 'b-o', label='Simplified Backward Euler', linewidth=4, markersize = 10)
-ax1.plot((dtArray[1:]), (error_e[1:,1]), 'g-o', label='Forward Euler', linewidth=4, markersize = 10)
+ax1.loglog((dtArray[1:]), (error[1:,1]), 'b-o', label='Simplified Backward Euler', linewidth=4, markersize = 10)
+ax1.loglog((dtArray[1:]), (error_e[1:,1]), 'g-o', label='Forward Euler', linewidth=4, markersize = 10)
 ax1.legend()
 '''
 ax1.plot((dtArray[1:]), (error[1][1:]), 'b-s', label='Simplified Backward Euler', linewidth=4, markersize = 10)
@@ -401,8 +410,8 @@ ax1.plot((dtArray[1:]), (error_e[2][1:]), 'g-v', label='Forward Euler', linewidt
 ax1.set_ylim([0, 15])
 extraticks = [5]'''
 #ax1.set_xticks(list(ax1.xticks()[0]) + extraticks)
-ax1.axhline(y=1, linewidth=4, color='r')
-ax1.set_ylim([0, 5])
+ax1.axhline(y=0, linewidth=4, color='r')
+ax1.set_ylim([0, 100])
 #ax2.axhline(y=5, linewidth=4, color='r')
 #ax3.axhline(y=5, linewidth=4, color='r')
 
