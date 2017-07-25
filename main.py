@@ -87,10 +87,10 @@ v_l = 10.613
 c = 1
 
 
-dtArray = np.array([2**n for n in range(-15, -4, 1)])
+dtArray = np.array([0.5*2**n for n in range(-15, 0, 1)])
 
 print dtArray
-T = 10
+T = 10.
 
 @nb.jit(nopython=True)
 def rhs(i_s, m_, n_, h_, v_, c_):
@@ -173,19 +173,26 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
         derivative_h = 1. / 1e-5 * (rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1] + 1e-5) \
                                     - rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1]))
 
-        m[i] = m[i-1] + dt * rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1]) / (1 - dt * omega  * derivative_m)
-        n[i] = n[i-1] + dt * rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1]) / (1 - dt * omega * derivative_n)
-        h[i] = h[i-1] + dt * rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1]) / (1 - dt * omega * derivative_h)
+        # modified Euler
+        mStar = m[i - 1] + dt * rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1])
+        nStar = n[i - 1] + dt * rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1])
+        hStar = h[i - 1] + dt * rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1])
+        Rhs[i - 1] = rhs(I_s[i - 1], m[i - 1], n[i - 1], h[i - 1], v[i - 1], c)
 
+        #A = omega * dt * derivativeV
+        # ReK = Rhs[i-1]*(1 - A)/(1 - 2*A + 2*A**2)  #CROS scheme
+        #ReK = Rhs[i - 1] * 1. / (1 - A)
+        #dv = dt * ReK
+        vStar = v[i - 1] + dt * Rhs[i - 1]
 
-        derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
-        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c)
+        m[i] = m[i - 1] + dtStar * (rhs_gating_vars(alpha_m(vStar), beta_m(vStar), vStar, mStar) + rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1]))
+        n[i] = n[i - 1] + dtStar * (rhs_gating_vars(alpha_n(vStar), beta_n(vStar), vStar, nStar) + rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1]))
+        h[i] = h[i - 1] + dtStar * (rhs_gating_vars(alpha_h(vStar), beta_h(vStar), vStar, hStar) + rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1]))
+        v[i] = v[i - 1] + dtStar * (rhs(I_s[i], mStar, nStar, hStar, vStar, c) + rhs(I_s[i - 1], m[i - 1], n[i - 1], h[i - 1], v[i - 1], c))
 
-        A = omega*dt*derivative
-        #ReK = Rhs[i-1]*(1 - A)/(1 - 2*A + 2*A**2)  #CROS scheme
-        ReK = Rhs[i - 1] * 1. / (1 - A)
-        dv = dt * ReK
-        v[i] = v[i-1] + dv
+        derivativeV = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
+        derivativeForCROS = (rhs(I_s[i], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
+
 
 
 
@@ -309,14 +316,14 @@ for dt in dtArray:
     #timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
-        pl.plot(time_array, analiticalSolution, '--k', label='analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
+        pl.plot(time_array, analiticalSolution, '--k', label='Analytical' % dtArray[counter], linewidth=5)
     elif (counter%3 == 0):
-        pl.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
+        pl.plot(time_array, v, '-', label='Step = %.2e ms' % dtArray[counter], linewidth=3)
     #pl.title('timestep = %.0e ms\n' % (dt))
-    pl.legend(loc='upper right')
-    pl.xlabel('time, ms')
-    pl.ylabel('action potential, mV')
-    #pl.ylim([-20, 120])
+    pl.legend(loc='best')
+    pl.xlabel('Time, ms')
+    pl.ylabel('Membrane potential, mV')
+    pl.ylim([-20, 140])
     pl.grid('on')
     counter += 1
 #pl.show()
@@ -410,8 +417,8 @@ ax1.plot((dtArray[1:]), (error_e[2][1:]), 'g-v', label='Forward Euler', linewidt
 ax1.set_ylim([0, 15])
 extraticks = [5]'''
 #ax1.set_xticks(list(ax1.xticks()[0]) + extraticks)
-ax1.axhline(y=0, linewidth=4, color='r')
-ax1.set_ylim([0, 100])
+ax1.axhline(y=5, linewidth=4, color='r')
+ax1.set_ylim([0, 1000])
 #ax2.axhline(y=5, linewidth=4, color='r')
 #ax3.axhline(y=5, linewidth=4, color='r')
 
@@ -432,8 +439,8 @@ ax1.plot((dtArray[1:]), p_e((dtArray[1:])),"g-", linewidth=4)
 # the line equation:
 ax1.text(0.01, 40e1, "y = (%.2e)*x + (%.2e)" %(z_e[0], z_e[1]), color='g', fontsize = 20, fontweight='bold')
 '''
-ax1.set_xlabel('timestep, ms')
-ax1.set_ylabel('RRMS error, %')
+ax1.set_xlabel('Step, ms')
+ax1.set_ylabel('Max |.| error, mV')
 ax1.grid('on')
 ax1.legend(loc='upper left')
 # f.figure()
