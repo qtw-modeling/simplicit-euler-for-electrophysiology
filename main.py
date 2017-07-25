@@ -90,7 +90,7 @@ c = 1
 dtArray = np.array([0.5*2**n for n in range(-15, 0, 1)])
 
 print dtArray
-T = 10.
+T = 30.
 
 @nb.jit(nopython=True)
 def rhs(i_s, m_, n_, h_, v_, c_):
@@ -163,7 +163,7 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
     v[0] = v_rest
 
 
-    dtStar = dt / 2
+    dtStar = dt / 2.
     for i in xrange(1, size):
 
         derivative_m = 1. / 1e-5 * (rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1] + 1e-5) \
@@ -173,25 +173,28 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
         derivative_h = 1. / 1e-5 * (rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1] + 1e-5) \
                                     - rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1]))
 
-        # modified Euler
+        # modified Euler stepping for gating vars
         mStar = m[i - 1] + dt * rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1])
         nStar = n[i - 1] + dt * rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1])
         hStar = h[i - 1] + dt * rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1])
         Rhs[i - 1] = rhs(I_s[i - 1], m[i - 1], n[i - 1], h[i - 1], v[i - 1], c)
 
-        #A = omega * dt * derivativeV
-        # ReK = Rhs[i-1]*(1 - A)/(1 - 2*A + 2*A**2)  #CROS scheme
-        #ReK = Rhs[i - 1] * 1. / (1 - A)
+
+        derivativeV = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i - 1], m[i], n[i], h[i],
+                                                                                           v[i - 1], c)) / d_gating_var
+        derivativeForCROS = (rhs(I_s[i], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i], m[i], n[i], h[i],
+                                                                                             v[i - 1],
+                                                                                             c)) / d_gating_var
+
+        gamma = omega * dt * derivativeForCROS   # gamma --- coefficient for short form
+        ReK = Rhs[i - 1]*(1 - gamma)/(1 - 2*gamma + 2*gamma**2)  # CROS scheme
         #dv = dt * ReK
-        vStar = v[i - 1] + dt * Rhs[i - 1]
+        vStar = v[i - 1] + dt * Rhs[i - 1] * 1. / (1. - omega * dt * derivativeV)
 
         m[i] = m[i - 1] + dtStar * (rhs_gating_vars(alpha_m(vStar), beta_m(vStar), vStar, mStar) + rhs_gating_vars(alpha_m(v[i - 1]), beta_m(v[i - 1]), v[i - 1], m[i - 1]))
         n[i] = n[i - 1] + dtStar * (rhs_gating_vars(alpha_n(vStar), beta_n(vStar), vStar, nStar) + rhs_gating_vars(alpha_n(v[i - 1]), beta_n(v[i - 1]), v[i - 1], n[i - 1]))
         h[i] = h[i - 1] + dtStar * (rhs_gating_vars(alpha_h(vStar), beta_h(vStar), vStar, hStar) + rhs_gating_vars(alpha_h(v[i - 1]), beta_h(v[i - 1]), v[i - 1], h[i - 1]))
-        v[i] = v[i - 1] + dtStar * (rhs(I_s[i], mStar, nStar, hStar, vStar, c) + rhs(I_s[i - 1], m[i - 1], n[i - 1], h[i - 1], v[i - 1], c))
-
-        derivativeV = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
-        derivativeForCROS = (rhs(I_s[i], m[i], n[i], h[i], v[i - 1] + d_gating_var, c) - rhs(I_s[i], m[i], n[i], h[i], v[i - 1], c)) / d_gating_var
+        v[i] = vStar
 
 
 
