@@ -5,17 +5,12 @@ import numpy as np
 import time
 import numba as nb
 import math as mt
-#from forErrorEtimation import *
+from scipy import interpolate as intp
+import sys
 
-#matplotlib.rc('xtick', labelsize=20)
-#matplotlib.rc('ytick', labelsize=20)
+
 matplotlib.rcParams.update({'font.size': 30})
 
-#font = {'family': 'normal',
-    #    'weight': 'normal',
-     #   'size': 20}
-
-#matplotlib.rc('font', **font)
 
 @nb.jit(nopython=True)
 def alpha_n(val): return 0.01 * (-val + 10) / (mt.exp((-val + 10) / 10) - 1) if val != 10 else 0.1
@@ -50,33 +45,32 @@ def EXP(val):
     return mt.exp(val)
 
 
-def CalculateNorm(arrayAnalitical, array2):
-    k = len(arrayAnalitical) / len(array2)
+def CalculateNorm(analiticalSolutionFunc, numericalSolutionArr, dt, amplitude):
     normArray = []
 
     # calculating RRHS error
     numerator, denumerator = 0, 0
-    for i in range(len(array2)):
-        numerator += (arrayAnalitical[k*i] - array2[i])**2
-        denumerator += (arrayAnalitical[k*i])**2
+    for i in range(len(numericalSolutionArr)):
+        t = i*dt
+        numerator += (analiticalSolutionFunc(t) - numericalSolutionArr[i])**2
+        denumerator += (analiticalSolutionFunc(t))**2
 
-        delta = abs(arrayAnalitical[int(k * i)] - array2[i])
+        delta = abs(analiticalSolutionFunc(t) - numericalSolutionArr[i])
         normArray.append(delta)
 
-    RRHS_error = np.sqrt(numerator / denumerator)
+    RRHSerror = np.sqrt(numerator / denumerator)
 
     # calculating max|o| error
     normArray = np.array(normArray)
-    max_module = np.amax(normArray)
-    amplitude = np.amax(arrayAnalitical) - np.amin(arrayAnalitical)
+    maxModule = np.amax(normArray)
     indexMax = np.argmax(normArray)
-    errors_list = [100 * RRHS_error, 100*max_module / amplitude]
+    errorsList = [100 * RRHSerror, 100*maxModule / amplitude]
 
-    '''for i in range(len(errors_list)):
-        if np.isnan(errors_list[i]) == True:
-            errors_list[i] = 1e9'''
+    for i in range(len(errorsList)):
+        if np.isnan(errorsList[i]) == True:
+            errorsList[i] = 1e20 #sys.float_info.max
 
-    return errors_list
+    return errorsList
 
 
 
@@ -88,10 +82,11 @@ v_k = -12
 v_l = 10.613
 c = 1
 
-dtArray = [2**(-n) for n in range(17, 0, -1)] #16 points - for error estimation
-
+T = 8
+numPointsArray = np.array([int(2**n) for n in range(5, 17)])
+dtArray = np.array([1e-5] + list(float(T)/numPointsArray[::-1])) #[1e-5] + [0.009232069419105898, 0.0041864984602040045] #np.array([1e-5] + list(float(T)/numPointsArray[::-1]))
 print dtArray
-T = 6
+
 @nb.jit(nopython=True)
 def rhs(i_s, m_, n_, h_, v_, c_):
     return (1. / c_) * (i_s - g_n * (m_) ** 3 * (h_) * (v_ - v_n) - g_k * (n_ ** 4) * (v_ - v_k) - g_l * (v_ - v_l))
@@ -105,29 +100,14 @@ step_v = 1e-4
 d_gating_var = 1e-7
 v_rest = 0
 
-'''
-startEuler = time.clock()
-for i in range(1, len(time_array)):
-
-    m += (alpha_m(v_euler[i-1]) * (1-m) - beta_m(v_euler[i-1])*m) * dt
-    n += (alpha_n(v_euler[i-1]) * (1-n) - beta_n(v_euler[i-1])*n) * dt
-    h += (alpha_h(v_euler[i-1]) * (1-h) - beta_h(v_euler[i-1])*h) * dt
-
-    #print alpha_m(v_euler[i-1]), alpha_n(v_euler[i-1]), alpha_h(v_euler[i-1])
-    dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
-    v_euler[i] = v_euler[i - 1] + dv
-
-timeEuler = time.clock() - startEuler
-'''
-
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 amplitude = 0
 counter = 0
 omega = 1 # relaxation parameter
 
-@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-                        nb.float64[:]), nopython=True)
+#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+ #                       nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
+  #                      nb.float64[:]), nopython=True)
 def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
     m[0] = m_inf(v_rest)
     h[0] = h_inf(v_rest)
@@ -146,8 +126,8 @@ def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs
 
 
 
-@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
+#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+#                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
 def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
 
     '''
@@ -176,13 +156,12 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
         v[i] = v[i-1] + dv
 
 
-
+analiticalSolutionFunc = None
 amplitude = 0
+analiticalSolution = None
 start = time.clock()
+
 plt.figure()
-
-
-
 timingEE, timingSIE = [], []
 for dt in dtArray:
     startMine = time.clock()
@@ -278,52 +257,66 @@ for dt in dtArray:
 
     if (counter == 0):
         analiticalSolution[:] = v_e[:]
-        amplitude = np.amin(analiticalSolution)
-        #print 'ana = ', analiticalSolution
-        analiticalSolution[:] -= amplitude
+        MIN, MAX = np.amin(analiticalSolution), np.amax(analiticalSolution)
+        amplitude = MAX - MIN
+        analiticalSolution[:] -= MIN
+        analiticalSolutionFunc = intp.interp1d(time_array, analiticalSolution)
 
 
     timeMine = time.clock() - startMine
-    #print timeMine
 
-    #print "amplitude %.2e" % amplitude
-    v[:] -= amplitude
-    v_e[:] -= amplitude
+    v[:] -= MIN
+    v_e[:] -= MIN
 
-
-    errTmp = CalculateNorm(analiticalSolution, v)
-    errTmp_e = CalculateNorm(analiticalSolution, v_e)
+    errTmp = CalculateNorm(analiticalSolutionFunc, v, dt, amplitude)
+    errTmp_e = CalculateNorm(analiticalSolutionFunc, v_e, dt, amplitude)
 
     error.append(errTmp)
     error_e.append(errTmp_e)
     #timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
-        plt.plot(time_array, analiticalSolution, '--k', label='Analytical (dt = %.2e ms)' % dtArray[counter], linewidth=5)
-    elif (counter%4 == 0):
-        plt.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
+        plt.plot(time_array, analiticalSolution, 'k-', label='gNa=1200 mS/cm^2', linewidth=4)
+    #if counter == 1:
+    #    plt.plot(time_array, v, '-', label='5% RRMS error', linewidth=2)
+    #if counter == 2:
+    #    plt.plot(time_array, v, '-', label='5% Maxmod error', linewidth=2)
+
+    #elif (counter%4 == 0):
+        #plt.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
     #pl.title('timestep = %.0e ms\n' % (dt))
-    plt.legend(loc='upper right')
+    plt.legend(loc='best')
     plt.xlabel('Time, ms')
     plt.ylabel('Membrane potential, mV')
     plt.ylim([0, 140])
     plt.grid('on')
     counter += 1
-#pl.show()
+plt.show()
 print 'time elapsed = %.2e sec' % (time.clock() - start)
 
-def CalculatePolyfit(arrayX, arrayY, order):
-    z = np.polyfit(arrayX, arrayY, order)
-    p = np.poly1d(z)
-    return p # is function of polynom type
+error = np.array(error)
+error_e = np.array(error_e)
 
 
+def CalculatePolyfit(arrayX, arrayY):
+    p = intp.interp1d(arrayX, arrayY)
+    return p #
+
+dtSpecificList = []
+for i in range(2):
+    dtSpecificList.append(CalculatePolyfit(error[1:, i], dtArray[1:])(5))
+print 'Timesteps for 5%', dtSpecificList
+
+
+
+
+'''
 left, right = 2, 9
 orderOfpolynomial = 1
 # calc the trendline
-'''for i in range(3):
+for i in range(3):
     ax1.plot(error[i][left:right], CalculatePolyfit(error[i][left:], dtArray[left:], 1)(error[i][left:])[0], 'b-', linewidth=4)
-    ax1.plot(error_e[i][left:right], CalculatePolyfit(error_e[i][left:], dtArray[left:], 1)(error_e[i][left:])[0], 'g-', linewidth=4)'''
+    ax1.plot(error_e[i][left:right], CalculatePolyfit(error_e[i][left:], dtArray[left:], 1)(error_e[i][left:])[0], 'g-', linewidth=4)
 
 error = np.array(error)
 error_e = np.array(error_e)
@@ -341,7 +334,7 @@ computational_time_SIE_list = np.array([np.zeros(LEN) for i in range(3)])
 computational_time_EE_list = np.array([np.zeros(LEN) for i in range(3)])
 speedup_list = np.array([np.zeros(LEN) for i in range(3)])
 
-'''
+
 # loop for error types
 for i in range(NUM_ERROR_TYPES):
     dt_for_errors_list[i] = CalculatePolyfit(error[left:right,i], dtArray[left:right], 1)(list_of_errors)
@@ -388,20 +381,27 @@ fig2 = plt.figure()
 #ax1.plot(np.log(dtArray[1:]), np.log(error[1:]), 'k-o', linewidth=4, markersize = 15)
 #ax1.set_xlabel('ln(timestep)')
 #ax1.set_ylabel('ln(absolute error)')
+plt.loglog((timingSIE[1:]), (error[1:,0]), 'b-o', label='Simplified B.Euler', linewidth=4, markersize = 10)
+plt.loglog((timingEE[1:]), (error_e[1:,0]), 'g-o', label='F.Euler', linewidth=4, markersize = 10)
 plt.grid('on')
-plt.loglog((timingSIE[1:]), (error[1:,0]), 'b-o', linewidth=4, markersize = 10)
-plt.loglog((timingEE[1:]), (error_e[1:,0]), 'g-o', linewidth=4, markersize = 10)
 plt.xlabel('t calc, s')
 plt.ylabel('RRMS error, %')
-plt.axhline(y=5, linewidth=4, color='r')
+plt.ylim([0, 100])
+plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
+plt.axhline(y=1, linewidth=4, color='k', linestyle='--', label='1%')
+plt.legend(loc='best')
+
 
 fig3 = plt.figure()
+plt.loglog((timingSIE[1:]), (error[1:,1]), 'b-o', label='Simplified B.Euler', linewidth=4, markersize = 10)
+plt.loglog((timingEE[1:]), (error_e[1:,1]), 'g-o', label='F.Euler', linewidth=4, markersize = 10)
 plt.grid('on')
-plt.loglog((timingSIE[1:]), (error[1:,1]), 'b-o', linewidth=4, markersize = 10)
-plt.loglog((timingEE[1:]), (error_e[1:,1]), 'g-o', linewidth=4, markersize = 10)
 plt.xlabel('t calc, s')
-plt.ylabel('maxmod error, %')
-plt.axhline(y=5, linewidth=4, color='r')
+plt.ylabel('Maxmod error, %')
+plt.ylim([0., 100])
+plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
+plt.axhline(y=1, linewidth=4, color='k', linestyle='--', label='1%')
+plt.legend(loc='best')
 
 '''
 ax1.plot((dtArray[1:]), (error[1][1:]), 'b-s', label='Simplified Backward Euler', linewidth=4, markersize = 10)
@@ -448,3 +448,4 @@ np.savetxt('errors_3_types_T%.1fsec.csv' % T, np.c_[dtArray[1:], error[0,1:], er
            header='timestep(ms),max_norm_error_SIE,max_norm_error_EE,RRMS_SIE,RRMS_EE,mixed_RRMS_max_norm_SIE,mixed_RRMS_max_norm_EE,timingSIE,timingEE')
 '''
 plt.show()
+
