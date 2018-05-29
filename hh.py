@@ -9,7 +9,7 @@ from scipy import interpolate as intp
 import sys
 
 
-matplotlib.rcParams.update({'font.size': 30})
+matplotlib.rcParams.update({'font.size': 25})
 
 
 @nb.jit(nopython=True)
@@ -68,13 +68,13 @@ def CalculateNorm(analiticalSolutionFunc, numericalSolutionArr, dt, amplitude):
 
     for i in range(len(errorsList)):
         if np.isnan(errorsList[i]) == True:
-            errorsList[i] = 1e20 #sys.float_info.max
+            errorsList[i] = sys.float_info.max
 
     return errorsList
 
 
 
-g_n = 1200#120
+g_n = [120.] + [float(2*i) for i in range(100, 401, 100)]
 g_k = 36
 g_l = 0.3
 v_n = 115
@@ -84,11 +84,11 @@ c = 1
 
 T = 8
 numPointsArray = np.array([int(2**n) for n in range(5, 17)])
-dtArray = np.array([1e-5] + list(float(T)/numPointsArray[::-1])) #[1e-5] + [0.009232069419105898, 0.0041864984602040045] #np.array([1e-5] + list(float(T)/numPointsArray[::-1]))
-print dtArray
+dtArray = np.array(([1e-4]) + list(float(T)/numPointsArray[::-1])) #[1e-5] + [0.009232069419105898, 0.0041864984602040045] #np.array([1e-5] + list(float(T)/numPointsArray[::-1]))
+print (dtArray)
 
 @nb.jit(nopython=True)
-def rhs(i_s, m_, n_, h_, v_, c_):
+def rhs(i_s, m_, n_, h_, v_, c_, g_n):
     return (1. / c_) * (i_s - g_n * (m_) ** 3 * (h_) * (v_ - v_n) - g_k * (n_ ** 4) * (v_ - v_k) - g_l * (v_ - v_l))
 
 @nb.jit(nopython=True)
@@ -105,30 +105,30 @@ amplitude = 0
 counter = 0
 omega = 1 # relaxation parameter
 
-#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
- #                       nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-  #                      nb.float64[:]), nopython=True)
-def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
+@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
+                        nb.float64[:], nb.float64), nopython=True)
+def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s, g_n):
     m[0] = m_inf(v_rest)
     h[0] = h_inf(v_rest)
     n[0] = n_inf(v_rest)
     v[0] = v_rest
 
-    for i in xrange(1, size):
+    for i in range(1, size):
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
 
-        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c)
+        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c, g_n)
 
         dv = Rhs[i-1] * dt
         v[i] = v[i-1] + dv
 
 
 
-#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-#                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:]), nopython=True)
-def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s):
+@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64), nopython=True)
+def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s, g_n):
 
     '''
     v, m, n, h, Rhs = [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)],
@@ -144,169 +144,159 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
 
 
     dtStar = dt / 2
-    for i in xrange(1, size):
+    for i in range(1, size):
         m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
         n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
         h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
 
-        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c)
-        derivative = (rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1] + d_gating_var, c) - Rhs[i-1]) / d_gating_var
+        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1], c, g_n)
+        derivative = (rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1] + d_gating_var, c, g_n) - Rhs[i-1]) / d_gating_var
 
         dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
         v[i] = v[i-1] + dv
-
+#hh_analytical_solutions
 
 analiticalSolutionFunc = None
 amplitude = 0
 analiticalSolution = None
 start = time.clock()
+speedupRRMS, speedupMaxmod = [], []
+ERROR = 1.
+counterOuter = 0
 
 plt.figure()
-timingEE, timingSIE = [], []
-for dt in dtArray:
-    startMine = time.clock()
+for stiffnessParameter in g_n:
+    timingEE, timingSIE = [], []
+    error, error_e = [], []
+    counterInner = 0
+    for dt in dtArray:
+        startMine = time.clock()
 
-    # grid arrays and parameters
-    '''
-    time_array = np.zeros(SIZE)
-    v, m, n, h, Rhs = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
-    v_e, m_e, n_e, h_e, Rhs_e = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
-    I_s = np.zeros(len(time_array))
-    '''
-    print 'Iteration #%d' % counter
-    time_array = np.arange(0, T, dt)
-    SIZE = len(time_array)
-    v = 0*np.ones(SIZE)
-    m = np.zeros(SIZE)
-    n = np.zeros(SIZE)
-    h = np.zeros(SIZE)
-    Rhs = np.zeros(SIZE) # [0. for i in range(size)]
-    v_e = 0 * np.ones(SIZE) #[0. for i in range(size)]
-    m_e = np.zeros(SIZE) #[0. for i in range(size)]
-    h_e = np.zeros(SIZE) # [0. for i in range(size)]
-    n_e = np.zeros(SIZE) #[0. for i in range(size)]
-    Rhs_e = np.zeros(SIZE) #[0. for i in range(size)]
-    I_s = np.zeros(SIZE) #[10. for i in range(size)]
-    I_s[:] = 10
-
-
-    NUM_LAUNCHES = 1
-    startEE = time.clock()
-    for i in range(NUM_LAUNCHES):
-        CalculateHHusingExplicitEuler(time_array, SIZE, dt, counter, m, n, h, v_e, Rhs, I_s)
-    timingEE.append((time.clock() - startEE)/NUM_LAUNCHES)
-
-    startSIE = time.clock()
-    for i in range(NUM_LAUNCHES):
-        CalculateHHusingSImplicitEuler(time_array, SIZE, dt, counter, m, n, h, v, Rhs, I_s)
-    timingSIE.append((time.clock() - startSIE)/NUM_LAUNCHES)
+        # grid arrays and parameters
+        '''
+        time_array = np.zeros(SIZE)
+        v, m, n, h, Rhs = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
+        v_e, m_e, n_e, h_e, Rhs_e = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
+        I_s = np.zeros(len(time_array))
+        '''
+        print ('Iteration #%d' % counterInner)
+        time_array = np.arange(0, T, dt)
+        SIZE = len(time_array)
+        v = 0*np.ones(SIZE)
+        m = np.zeros(SIZE)
+        n = np.zeros(SIZE)
+        h = np.zeros(SIZE)
+        Rhs = np.zeros(SIZE) # [0. for i in range(size)]
+        v_e = 0 * np.ones(SIZE) #[0. for i in range(size)]
+        m_e = np.zeros(SIZE) #[0. for i in range(size)]
+        h_e = np.zeros(SIZE) # [0. for i in range(size)]
+        n_e = np.zeros(SIZE) #[0. for i in range(size)]
+        Rhs_e = np.zeros(SIZE) #[0. for i in range(size)]
+        I_s = np.zeros(SIZE) #[10. for i in range(size)]
+        I_s[:] = 10
 
 
-    #time_array = np.array(time_array)
-    #V = np.array(time_array)
-    #V_e = np.array(time_array)
+        NUM_LAUNCHES = 5
+        startEE = time.clock()
+        for i in range(NUM_LAUNCHES):
+            CalculateHHusingExplicitEuler(time_array, SIZE, dt, counter, m, n, h, v_e, Rhs, I_s, stiffnessParameter)
+        timingEE.append((time.clock() - startEE)/NUM_LAUNCHES)
+
+        startSIE = time.clock()
+        for i in range(NUM_LAUNCHES):
+            CalculateHHusingSImplicitEuler(time_array, SIZE, dt, counter, m, n, h, v, Rhs, I_s, stiffnessParameter)
+        timingSIE.append((time.clock() - startSIE)/NUM_LAUNCHES)
+
+        if counter == 0:
+            analiticalSolution = np.zeros(len(time_array))
+
+        if (counter == 0):
+            analiticalSolution[:] = v_e[:]
+            MIN, MAX = np.amin(analiticalSolution), np.amax(analiticalSolution)
+            amplitude = MAX - MIN
+            analiticalSolution[:] -= MIN
+            analiticalSolutionFunc = intp.interp1d(time_array, analiticalSolution)
 
 
-    if counter == 0:
-        analiticalSolution = np.zeros(len(time_array))
+        timeMine = time.clock() - startMine
+
+        v[:] -= MIN
+        v_e[:] -= MIN
+
+        errTmp = CalculateNorm(analiticalSolutionFunc, v, dt, amplitude)
+        errTmp_e = CalculateNorm(analiticalSolutionFunc, v_e, dt, amplitude)
+
+        error.append(errTmp)
+        error_e.append(errTmp_e)
+        #timeMaxError.append(indexErrTpm * dt)
+
+        if counterInner == 0:
+            if counterOuter == 0:
+                plt.plot(time_array, analiticalSolution, 'k--', label=r'$g_{Na}$ = %d $мСм/см^2$' % stiffnessParameter, linewidth=4)
+            else:
+                plt.plot(time_array, analiticalSolution, '-', label=r'$g_{Na}$ = %d $мСм/см^2$' % stiffnessParameter, linewidth=4)
+        #if counter == 1:
+        #    plt.plot(time_array, v, '-', label='5% RRMS error', linewidth=2)
+        #if counter == 2:
+        #    plt.plot(time_array, v, '-', label='5% Maxmod error', linewidth=2)
+
+        #elif (counter%4 == 0):
+            #plt.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
+        #pl.title('timestep = %.0e ms\n' % (dt))
+        plt.legend(loc='best', prop={'size': 20})
+        plt.xlabel('Время, мс')
+        plt.ylabel('V, мВ')
+        plt.ylim([0, 140])
+        plt.xlim([0, 8])
+        plt.grid('on')
+        counterInner += 1
+
+    counterOuter += 1
+    error_for_calc = np.array(error)
+    error_e_for_calc = np.array(error_e)
+
+    speedupRRMS.append([intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(5.) / \
+                       intp.interp1d(error_for_calc[1:, 0], timingSIE[1:])(5.), \
+                        intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(1.) / \
+                        intp.interp1d(error_for_calc[1:, 0], timingSIE[1:])(1.)]
+                       )
 
 
-    '''
-    m[0] = m_e[0] = m_inf(v_rest)
-    h[0] = h_e[0] = h_inf(v_rest)
-    n[0] = n_e[0] = n_inf(v_rest)
-    v[0] = v_e[0] = v_rest
+    speedupMaxmod.append([intp.interp1d(error_e_for_calc[1:, 1], timingEE[1:])(5.) / \
+                       intp.interp1d(error_for_calc[1:, 1], timingSIE[1:])(5.), \
+                          intp.interp1d(error_e_for_calc[1:, 1], timingEE[1:])(1.) / \
+                          intp.interp1d(error_for_calc[1:, 1], timingSIE[1:])(1.)]
+                         )
 
-    #I_s = np.zeros(len(time_array))
-    I_s[:] = 10
-
-    dtStar = dt / 2
-    for i in range(1, len(time_array)):
-
-        m[i] = m_inf(v[i-1]) + (m[i-1] - m_inf(v[i-1])) * np.exp(-dt * (alpha_m(v[i-1]) + beta_m(v[i-1])))
-        n[i] = n_inf(v[i-1]) + (n[i-1] - n_inf(v[i-1])) * np.exp(-dt * (alpha_n(v[i-1]) + beta_n(v[i-1])))
-        h[i] = h_inf(v[i-1]) + (h[i-1] - h_inf(v[i-1])) * np.exp(-dt * (alpha_h(v[i-1]) + beta_h(v[i-1])))
-
-
-        m_e[i] = m_inf(v_e[i-1]) + (m_e[i-1] - m_inf(v_e[i-1])) * np.exp(-dt * (alpha_m(v_e[i-1]) + beta_m(v_e[i-1])))
-        n_e[i] = n_inf(v_e[i-1]) + (n_e[i-1] - n_inf(v_e[i-1])) * np.exp(-dt * (alpha_n(v_e[i-1]) + beta_n(v_e[i-1])))
-        h_e[i] = h_inf(v_e[i-1]) + (h_e[i-1] - h_inf(v_e[i-1])) * np.exp(-dt * (alpha_h(v_e[i-1]) + beta_h(v_e[i-1])))
-
-        # rhs = (1./c) * (I_s[i-1] - g_n*m**3*h*(v[i-1]-v_n) - g_k*n**4*(v[i-1]-v_k) - g_l*(v[i-1]-v_l))
-        derivative = (rhs(I_s[i - 1], m[i], n[i], h[i], v[i - 1] + d_gating_var) - rhs(I_s[i - 1], m[i], n[i], h[i],
-                                                                              v[i - 1])) / d_gating_var
-
-        Rhs[i-1] = rhs(I_s[i-1], m[i-1], n[i-1], h[i-1], v[i-1])
-        Rhs_e[i-1] = rhs(I_s[i-1], m_e[i-1], n_e[i-1], h_e[i-1], v_e[i-1])
-
-        if counter != 0: # for calculating numerical solutions with various timesteps
-            dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
-            dv_e = Rhs_e[i-1] * dt
-        else: # for calculating "analitical" solution using Explicit Euler
-            dv = Rhs[i-1] * dt
-            dv_e = Rhs_e[i-1] * dt
-
-        v[i] = v[i-1] + dv
-        v_e[i] = v_e[i-1] + dv_e
-
-        if (i % 2 == 0):
-            dtStar = dt / 1
-        else:
-            dtStar = dt
-    '''
-
-    if (counter == 0):
-        analiticalSolution[:] = v_e[:]
-        MIN, MAX = np.amin(analiticalSolution), np.amax(analiticalSolution)
-        amplitude = MAX - MIN
-        analiticalSolution[:] -= MIN
-        analiticalSolutionFunc = intp.interp1d(time_array, analiticalSolution)
-
-
-    timeMine = time.clock() - startMine
-
-    v[:] -= MIN
-    v_e[:] -= MIN
-
-    errTmp = CalculateNorm(analiticalSolutionFunc, v, dt, amplitude)
-    errTmp_e = CalculateNorm(analiticalSolutionFunc, v_e, dt, amplitude)
-
-    error.append(errTmp)
-    error_e.append(errTmp_e)
-    #timeMaxError.append(indexErrTpm * dt)
-
-    if counter == 0:
-        plt.plot(time_array, analiticalSolution, 'k-', label='gNa=1200 mS/cm^2', linewidth=4)
-    #if counter == 1:
-    #    plt.plot(time_array, v, '-', label='5% RRMS error', linewidth=2)
-    #if counter == 2:
-    #    plt.plot(time_array, v, '-', label='5% Maxmod error', linewidth=2)
-
-    #elif (counter%4 == 0):
-        #plt.plot(time_array, v, '-', label='dt = %.2e ms' % dtArray[counter], linewidth=3)
-    #pl.title('timestep = %.0e ms\n' % (dt))
-    plt.legend(loc='best')
-    plt.xlabel('Time, ms')
-    plt.ylabel('Membrane potential, mV')
-    plt.ylim([0, 140])
-    plt.grid('on')
-    counter += 1
 plt.show()
-print 'time elapsed = %.2e sec' % (time.clock() - start)
+print ('time elapsed = %.2e sec' % (time.clock() - start))
 
-error = np.array(error)
-error_e = np.array(error_e)
+speedupRRMS = np.array(speedupRRMS)
+speedupMaxmod = np.array(speedupMaxmod)
 
+fig2 = plt.figure()
+plt.plot(g_n, speedupRRMS[:, 0], 'b-o', label='5% RRMS', linewidth=4, markersize=10)
+plt.plot(g_n, speedupRRMS[:, 1], 'g-o', label='1% RRMS', linewidth=4, markersize=10)
+plt.plot(g_n, speedupMaxmod[:, 0], 'r-o', label='5% Maxmod', linewidth=4, markersize=10)
+plt.plot(g_n, speedupMaxmod[:, 1], 'y-o', label='1% Maxmod', linewidth=4, markersize=10)
+plt.xlabel(r'$g_{Na}, мСм/см^2$')
+plt.ylabel('Ускорение')
+plt.grid('on')
+plt.legend(loc='best', prop={'size': 15})
+fig2.tight_layout()
+plt.show()
+
+#error = np.array(error)
+#error_e = np.array(error_e)
 
 def CalculatePolyfit(arrayX, arrayY):
     p = intp.interp1d(arrayX, arrayY)
     return p #
 
-dtSpecificList = []
-for i in range(2):
-    dtSpecificList.append(CalculatePolyfit(error[1:, i], dtArray[1:])(5))
-print 'Timesteps for 5%', dtSpecificList
-
+#dtSpecificList = []
+#for i in range(2):
+#    dtSpecificList.append(CalculatePolyfit(error[1:, i], dtArray[1:])(5))
+#print 'Timesteps for 5%', dtSpecificList
 
 
 
