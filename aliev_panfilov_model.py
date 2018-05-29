@@ -8,7 +8,7 @@ import math as mt
 from scipy import interpolate as intp
 import sys
 
-matplotlib.rcParams.update({'font.size': 30})
+matplotlib.rcParams.update({'font.size': 25})
 
 
 def CalculateNorm(analiticalSolutionFunc, numericalSolutionArr, dt, amplitude):
@@ -34,12 +34,12 @@ def CalculateNorm(analiticalSolutionFunc, numericalSolutionArr, dt, amplitude):
 
     for i in range(len(errorsList)):
         if np.isnan(errorsList[i]) == True:
-            errorsList[i] = sys.float_info.max
+            errorsList[i] = 1e20 #sys.float_info.max
 
     return errorsList
 
 
-k = [float(i) for i in range(5, 15)]
+k = 8. #[float(i) for i in range(5, 15)]
 a = 0.15
 
 u_rest = 0
@@ -47,10 +47,10 @@ v_rest = 0
 
 
 T = 40.
-numPointsArray = np.array([int(2**n) for n in range(5, 18)])
-dtArray = np.array([1e-4])# + list(float(T)/numPointsArray[::-1])) #[2**(-n) for n in range(17, 0, -1)] #16 points - for error estimation
+numPointsArray = np.array([int(2**n) for n in range(5, 15)])
+dtArray = np.array([1e-4] + [0.06792465, 0.02008577]) #list(float(T)/numPointsArray[::-1])) #[2**(-n) for n in range(17, 0, -1)] #16 points - for error estimation
 
-print dtArray
+print(dtArray)
 
 @nb.jit(nopython=True)
 def eps(u, v):
@@ -72,20 +72,6 @@ def rhsV(u, v, k):
 stepForDer = 1e-2
 d_gating_var = 1e-7
 
-'''
-startEuler = time.clock()
-for i in range(1, len(time_array)):
-
-    m += (alpha_m(v_euler[i-1]) * (1-m) - beta_m(v_euler[i-1])*m) * dt
-    n += (alpha_n(v_euler[i-1]) * (1-n) - beta_n(v_euler[i-1])*n) * dt
-    h += (alpha_h(v_euler[i-1]) * (1-h) - beta_h(v_euler[i-1])*h) * dt
-
-    #print alpha_m(v_euler[i-1]), alpha_n(v_euler[i-1]), alpha_h(v_euler[i-1])
-    dv = rhs(I_s[i - 1], m, n, h, v_euler[i - 1]) * dt
-    v_euler[i] = v_euler[i - 1] + dv
-
-timeEuler = time.clock() - startEuler
-'''
 
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 amplitude = 0
@@ -99,7 +85,7 @@ def CalculateUsingExplicitEuler(time_array, size, dt, counter, u, v, RhsU, RhsV,
     u[0] = u_rest
     v[0] = v_rest
 
-    for i in xrange(1, size):
+    for i in range(1, size):
         RhsU[i - 1] = rhsU(u[i - 1], v[i - 1], k)
         RhsV[i - 1] = rhsV(u[i - 1], v[i - 1], k)
 
@@ -123,7 +109,7 @@ def CalculateUsingSImplicitEuler(time_array, size, dt, counter, u, v, RhsU, RhsV
     u[0] = u_rest
     v[0] = v_rest
 
-    for i in xrange(1, size):
+    for i in range(1, size):
         RhsU[i - 1] = rhsU(u[i - 1], v[i - 1], k)
         RhsV[i - 1] = rhsV(u[i - 1], v[i - 1], k)
 
@@ -134,7 +120,7 @@ def CalculateUsingSImplicitEuler(time_array, size, dt, counter, u, v, RhsU, RhsV
         u[i] = u[i - 1] + dt*RhsU[i - 1] / (1 - dt*dRhsUdU)
 
 
-#speedup_ap_1percent_rrms
+
 
 
 amplitude = 0
@@ -142,115 +128,100 @@ start = time.clock()
 plt.figure()
 
 stiffnessCoeff = k
-ERROR = 1. # in %
+ERROR = 5 # in %
 speedup = []
-for stiffnessCoeff in k:
-    timingEE, timingSIE = [], []
-    error, error_e = [], []
-    counter = 0
-    for dt in dtArray:
-        #startMine = time.clock()
+#for stiffnessCoeff in k:
+timingEE, timingSIE = [], []
+error, error_e = [], []
+counter = 0
+for dt in dtArray:
+    #startMine = time.clock()
 
-        print 'Iteration #%d' % counter
-        time_array = np.arange(0., T, dt)
-        SIZE = len(time_array)
-        u = np.zeros(SIZE)
-        v = np.ones(SIZE)
-        RhsU = np.zeros(SIZE) # [0. for i in range(size)]
-        RhsV = np.zeros(SIZE)
+    print ('Iteration #%d' % counter)
+    time_array = np.arange(0., T, dt)
+    SIZE = len(time_array)
+    u = np.zeros(SIZE)
+    v = np.ones(SIZE)
+    RhsU = np.zeros(SIZE) # [0. for i in range(size)]
+    RhsV = np.zeros(SIZE)
 
-        u_e = np.zeros(SIZE)
-        v_e = np.zeros(SIZE) #[0. for i in range(size)]
+    u_e = np.zeros(SIZE)
+    v_e = np.zeros(SIZE) #[0. for i in range(size)]
 
-        RhsU_e = np.zeros(SIZE) #[0. for i in range(size)]
-        RhsV_e = np.zeros(SIZE)
+    RhsU_e = np.zeros(SIZE) #[0. for i in range(size)]
+    RhsV_e = np.zeros(SIZE)
 
-        I_s =10*np.ones(SIZE) #[10. for i in range(size)]
-
-
-
-        NUM_LAUNCHES = 5
-        startEE = time.clock()
-        for i in range(NUM_LAUNCHES):
-            CalculateUsingExplicitEuler(time_array, SIZE, dt, counter, u_e, v_e, RhsU_e, RhsV_e, I_s, \
-                                                                                            stiffnessCoeff)
-        timingEE.append((time.clock() - startEE)/NUM_LAUNCHES)
-
-        startSIE = time.clock()
-        for i in range(NUM_LAUNCHES):
-            CalculateUsingSImplicitEuler(time_array, SIZE, dt, counter, u, v, RhsU, RhsV, I_s, \
-                                                                                            stiffnessCoeff)
-        timingSIE.append((time.clock() - startSIE)/NUM_LAUNCHES)
+    I_s =10*np.ones(SIZE) #[10. for i in range(size)]
 
 
-            #time_array = np.array(time_array)
-            #V = np.array(time_array)
-            #V_e = np.array(time_array)
+
+    NUM_LAUNCHES = 5
+    startEE = time.clock()
+    for i in range(NUM_LAUNCHES):
+        CalculateUsingExplicitEuler(time_array, SIZE, dt, counter, u_e, v_e, RhsU_e, RhsV_e, I_s, \
+                                                                                        k)
+    timingEE.append((time.clock() - startEE)/NUM_LAUNCHES)
+
+    startSIE = time.clock()
+    for i in range(NUM_LAUNCHES):
+        CalculateUsingSImplicitEuler(time_array, SIZE, dt, counter, u, v, RhsU, RhsV, I_s, \
+                                                                                        k)
+    timingSIE.append((time.clock() - startSIE)/NUM_LAUNCHES)
+
+    if counter == 0:
+        analiticalSolution = np.zeros(len(time_array))
 
 
-        if counter == 0:
-            analiticalSolution = np.zeros(len(time_array))
+    if (counter == 0):
+        analiticalSolution[:] = 100*u_e[:] - 80 # scaled to membrane voltage
+        MIN, MAX = np.amin(analiticalSolution), np.amax(analiticalSolution)
+        amplitude = MAX - MIN
+        analiticalSolution[:] -= MIN
+        analiticalSolutionFunc = intp.interp1d(time_array, analiticalSolution)
 
 
-        if (counter == 0):
-            analiticalSolution[:] = 100*u_e[:] - 80 # scaled to membrane voltage
-            MIN, MAX = np.amin(analiticalSolution), np.amax(analiticalSolution)
-            amplitude = MAX - MIN
-            analiticalSolution[:] -= MIN
-            analiticalSolutionFunc = intp.interp1d(time_array, analiticalSolution)
+    u_e[:] = 100*u_e[:] - 80 # scaled to membrane voltage
+    u[:] = 100*u[:] - 80 # scaled to membrane voltage
 
-        #timeMine = time.clock() - startMine
-            #print timeMine
-
-            #print "amplitude %.2e" % amplitude
-
-        u_e[:] = 100*u_e[:] - 80 # scaled to membrane voltage
-        u[:] = 100*u[:] - 80 # scaled to membrane voltage
-
-        u[:] -= MIN
-        u_e[:] -= MIN
-        time_array *= 12.9
+    u[:] -= MIN
+    u_e[:] -= MIN
+    time_array *= 12.9
 
 
-        errTmp = CalculateNorm(analiticalSolutionFunc, u, dt, amplitude)
-        errTmp_e = CalculateNorm(analiticalSolutionFunc, u_e, dt, amplitude)
+    errTmp = CalculateNorm(analiticalSolutionFunc, u, dt, amplitude)
+    errTmp_e = CalculateNorm(analiticalSolutionFunc, u_e, dt, amplitude)
 
-        error.append(errTmp)
-        error_e.append(errTmp_e)
-            #timeMaxError.append(indexErrTpm * dt)
+    error.append(errTmp)
+    error_e.append(errTmp_e)
 
-        if counter == 0:
-            if stiffnessCoeff == 8.:
-                plt.plot(time_array, analiticalSolution, 'k--', linewidth=4, label='k = %.2f' % stiffnessCoeff)
-            else:
-                plt.plot(time_array, analiticalSolution, '-', linewidth=4, label='k = %.2f' % stiffnessCoeff)
-        #elif (counter%3 == 0):
-        #    plt.plot(time_array, u, '-', label='dt = %.2e ms' % 12.9*dtArray[counter], linewidth=4)
-            #pl.title('timestep = %.0e ms\n' % (dt))
-        plt.legend(loc='best')
-        plt.xlabel('Time, ms')
-        plt.ylabel('Membrane potential, mV')
-        plt.ylim([0, 140])
-        plt.grid('on')
-        counter += 1
+    if counter == 0:
+        plt.plot(time_array, analiticalSolution, 'k--', label='Аналитическое', linewidth=2)
+    if counter == 1:
+        plt.plot(time_array, u, '-', label='Погрешность 5% по норме RRMS', linewidth=2)
+    if counter == 2:
+        plt.plot(time_array, u, '-', label='Погрешность 5% по норме Maxmod', linewidth=2)
+    plt.legend(loc='best', prop={'size': 20})
+    plt.xlabel('Время, мс')
+    plt.ylabel('V, мВ')
+    plt.ylim([0, 140])
+    plt.xlim([0, 500])
+    plt.grid('on')
+    counter += 1
 
     #error_for_calc = np.array(error)
     #error_e_for_calc = np.array(error_e)
 
-    #speedup.append(intp.interp1d(error_e_for_calc[1:, 1], timingEE[1:])(ERROR) / \
-     #               intp.interp1d(error_for_calc[1:, 1], timingSIE[1:])(ERROR))
+    #speedup.append(intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(ERROR) / \
+    #               intp.interp1d(error_for_calc[1:, 0], timingSIE[1:])(ERROR))
 
-plt.show()
-'''plt.figure()
-plt.plot(k, speedup, 'b-o', linewidth=4, markersize=10)
-plt.xlabel('k')
-plt.ylabel('Speedup')
-plt.grid('on')
-plt.show()
-'''
-#speedup_ap_maxmod_1percent_error
+error = np.array(error)
+error_e = np.array(error_e)
 
-print 'time elapsed = %.2e sec' % (time.clock() - start)
+'''dtSpecific = [intp.interp1d(error[1:, 0], dtArray[1:])(5.), intp.interp1d(error[1:, 1], dtArray[1:])(5.)]
+
+print('dtSpecific = ', dtSpecific)'''
+
+print ('time elapsed = %.2e sec' % (time.clock() - start))
 
 def CalculatePolyfit(arrayX, arrayY, order):
     p = intp.interp1d(arrayX, arrayY)
@@ -259,6 +230,9 @@ def CalculatePolyfit(arrayX, arrayY, order):
     #p = np.poly1d(z)
     return p # is function of polynom type
 
+
+
+#ap_analytical_vs_5percent_errors
 
 
 
