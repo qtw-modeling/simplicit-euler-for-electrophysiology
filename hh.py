@@ -68,13 +68,13 @@ def CalculateNorm(analiticalSolutionFunc, numericalSolutionArr, dt, amplitude):
 
     for i in range(len(errorsList)):
         if np.isnan(errorsList[i]) == True:
-            errorsList[i] = sys.float_info.max
+            errorsList[i] = 1e20 #sys.float_info.max
 
     return errorsList
 
 
 
-g_n = [120.] + [float(2*i) for i in range(100, 401, 100)]
+g_n = [120.] + [800.] #[float(2*i) for i in range(100, 401, 100)]
 g_k = 36
 g_l = 0.3
 v_n = 115
@@ -163,6 +163,8 @@ start = time.clock()
 speedupRRMS, speedupMaxmod = [], []
 ERROR = 1.
 counterOuter = 0
+error_for_calc, error_e_for_calc = [], []
+timingSIE_for_calc, timingEE_for_calc = [], []
 
 plt.figure()
 for stiffnessParameter in g_n:
@@ -252,10 +254,13 @@ for stiffnessParameter in g_n:
         counterInner += 1
 
     counterOuter += 1
-    error_for_calc = np.array(error)
-    error_e_for_calc = np.array(error_e)
+    error_for_calc.append(np.array(error))
+    error_e_for_calc.append(np.array(error_e))
 
-    speedupRRMS.append([intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(5.) / \
+    timingSIE_for_calc.append(np.array(timingSIE))
+    timingEE_for_calc.append(np.array(timingEE))
+
+    '''speedupRRMS.append([intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(5.) / \
                        intp.interp1d(error_for_calc[1:, 0], timingSIE[1:])(5.), \
                         intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(1.) / \
                         intp.interp1d(error_for_calc[1:, 0], timingSIE[1:])(1.)]
@@ -266,12 +271,12 @@ for stiffnessParameter in g_n:
                        intp.interp1d(error_for_calc[1:, 1], timingSIE[1:])(5.), \
                           intp.interp1d(error_e_for_calc[1:, 1], timingEE[1:])(1.) / \
                           intp.interp1d(error_for_calc[1:, 1], timingSIE[1:])(1.)]
-                         )
+                         )'''
 
 plt.show()
 print ('time elapsed = %.2e sec' % (time.clock() - start))
 
-speedupRRMS = np.array(speedupRRMS)
+'''speedupRRMS = np.array(speedupRRMS)
 speedupMaxmod = np.array(speedupMaxmod)
 
 fig2 = plt.figure()
@@ -284,7 +289,7 @@ plt.ylabel('Ускорение')
 plt.grid('on')
 plt.legend(loc='best', prop={'size': 15})
 fig2.tight_layout()
-plt.show()
+plt.show()'''
 
 #error = np.array(error)
 #error_e = np.array(error_e)
@@ -371,27 +376,33 @@ fig2 = plt.figure()
 #ax1.plot(np.log(dtArray[1:]), np.log(error[1:]), 'k-o', linewidth=4, markersize = 15)
 #ax1.set_xlabel('ln(timestep)')
 #ax1.set_ylabel('ln(absolute error)')
-plt.loglog((timingSIE[1:]), (error[1:,0]), 'b-o', label='Simplified B.Euler', linewidth=4, markersize = 10)
-plt.loglog((timingEE[1:]), (error_e[1:,0]), 'g-o', label='F.Euler', linewidth=4, markersize = 10)
+
+#plt.loglog((timingSIE_for_calc[0][1:]), (error_for_calc[0][1:,0]), 'b--o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
+plt.loglog((timingEE_for_calc[0][1:]), (error_e_for_calc[0][1:,0]), 'g--o', label='Явный метод', linewidth=4, markersize = 10)
+#plt.loglog((timingSIE_for_calc[1][1:]), (error_for_calc[1][1:,0]), 'b-o', label='Упрощенный неявный метод 1', linewidth=4, markersize = 10)
+plt.loglog((timingEE_for_calc[1][1:]), (error_e_for_calc[1][1:,0]), 'g-o', label='Явный метод 1', linewidth=4, markersize = 10)
+
 plt.grid('on')
-plt.xlabel('t calc, s')
-plt.ylabel('RRMS error, %')
+plt.xlabel('Время вычисления, с')
+plt.ylabel('Погрешность RRMS, %')
 plt.ylim([0, 100])
-plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
-plt.axhline(y=1, linewidth=4, color='k', linestyle='--', label='1%')
-plt.legend(loc='best')
+plt.axhline(y=5, linewidth=2, color='k', linestyle='-', label='5%')
+plt.axhline(y=1, linewidth=2, color='k', linestyle='-', label='1%')
+plt.legend(loc='best', prop={'size': 20})
 
 
 fig3 = plt.figure()
-plt.loglog((timingSIE[1:]), (error[1:,1]), 'b-o', label='Simplified B.Euler', linewidth=4, markersize = 10)
-plt.loglog((timingEE[1:]), (error_e[1:,1]), 'g-o', label='F.Euler', linewidth=4, markersize = 10)
+plt.loglog((timingSIE_for_calc[0][1:]), (error_for_calc[0][1:,1]), 'b--o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
+plt.loglog((timingEE_for_calc[0][1:]), (error_e_for_calc[0][1:,1]), 'g--o', label='Явный метод', linewidth=4, markersize = 10)
+plt.loglog((timingSIE_for_calc[1][1:]), (error_for_calc[1][1:,1]), 'b-o', label='Упрощенный неявный метод 1', linewidth=4, markersize = 10)
+plt.loglog((timingEE_for_calc[1][1:]), (error_e_for_calc[1][1:,1]), 'g-o', label='Явный метод 1', linewidth=4, markersize = 10)
 plt.grid('on')
-plt.xlabel('t calc, s')
-plt.ylabel('Maxmod error, %')
+plt.xlabel('Время вычисления, с')
+plt.ylabel('Погрешность Maxmod, %')
 plt.ylim([0., 100])
-plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
-plt.axhline(y=1, linewidth=4, color='k', linestyle='--', label='1%')
-plt.legend(loc='best')
+plt.axhline(y=5, linewidth=2, color='k', linestyle='-', label='5%')
+plt.axhline(y=1, linewidth=2, color='k', linestyle='-', label='1%')
+plt.legend(loc='best', prop={'size': 20})
 
 '''
 ax1.plot((dtArray[1:]), (error[1][1:]), 'b-s', label='Simplified Backward Euler', linewidth=4, markersize = 10)
@@ -439,3 +450,4 @@ np.savetxt('errors_3_types_T%.1fsec.csv' % T, np.c_[dtArray[1:], error[0,1:], er
 '''
 plt.show()
 
+#hh_2analytical_solutions
