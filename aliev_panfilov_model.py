@@ -34,7 +34,7 @@ def CalculateNorm(analiticalSolutionFunc, numericalSolutionArr, dt, amplitude):
 
     for i in range(len(errorsList)):
         if np.isnan(errorsList[i]) == True:
-            errorsList[i] = 1e20 #sys.float_info.max
+            errorsList[i] = sys.float_info.max
 
     return errorsList
 
@@ -47,8 +47,8 @@ v_rest = 0
 
 
 T = 40.
-numPointsArray = np.array([int(2**n) for n in range(5, 15)])
-dtArray = np.array([1e-4] + [0.06792465, 0.02008577]) #list(float(T)/numPointsArray[::-1])) #[2**(-n) for n in range(17, 0, -1)] #16 points - for error estimation
+numPointsArray = np.array([int(2**n) for n in range(5, 17)])
+dtArray = np.array([1e-4] + list(float(T)/numPointsArray[::-1])) #[2**(-n) for n in range(17, 0, -1)] #16 points - for error estimation
 
 print(dtArray)
 
@@ -72,15 +72,14 @@ def rhsV(u, v, k):
 stepForDer = 1e-2
 d_gating_var = 1e-7
 
-
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 amplitude = 0
 counter = 0
 omega = 1 # relaxation parameter
 
-@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-                        nb.float64[:], nb.float64), nopython=True)
+#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+                        #nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
+                        #nb.float64[:], nb.float64), nopython=True)
 def CalculateUsingExplicitEuler(time_array, size, dt, counter, u, v, RhsU, RhsV, I_s, k):
     u[0] = u_rest
     v[0] = v_rest
@@ -94,17 +93,10 @@ def CalculateUsingExplicitEuler(time_array, size, dt, counter, u, v, RhsU, RhsV,
 
 
 
-@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:],\
-                        nb.float64[:], nb.float64), nopython=True)
+#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+                        #nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:],\
+                        #nb.float64[:], nb.float64), nopython=True)
 def CalculateUsingSImplicitEuler(time_array, size, dt, counter, u, v, RhsU, RhsV, I_s, k):
-
-    '''
-    v, m, n, h, Rhs = [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)], [0. for i in range(size)],
-    #np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
-    v_e, m_e, n_e, h_e, Rhs_e = np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array)), np.zeros(len(time_array))
-    I_s = np.zeros(len(time_array))
-    '''
 
     u[0] = u_rest
     v[0] = v_rest
@@ -118,8 +110,6 @@ def CalculateUsingSImplicitEuler(time_array, size, dt, counter, u, v, RhsU, RhsV
 
         v[i] = v[i - 1] + dt*RhsV[i - 1]
         u[i] = u[i - 1] + dt*RhsU[i - 1] / (1 - dt*dRhsUdU)
-
-
 
 
 
@@ -159,13 +149,13 @@ for dt in dtArray:
     startEE = time.clock()
     for i in range(NUM_LAUNCHES):
         CalculateUsingExplicitEuler(time_array, SIZE, dt, counter, u_e, v_e, RhsU_e, RhsV_e, I_s, \
-                                                                                        k)
+                                                                                        stiffnessCoeff)
     timingEE.append((time.clock() - startEE)/NUM_LAUNCHES)
 
     startSIE = time.clock()
     for i in range(NUM_LAUNCHES):
         CalculateUsingSImplicitEuler(time_array, SIZE, dt, counter, u, v, RhsU, RhsV, I_s, \
-                                                                                        k)
+                                                                                        stiffnessCoeff)
     timingSIE.append((time.clock() - startSIE)/NUM_LAUNCHES)
 
     if counter == 0:
@@ -178,7 +168,6 @@ for dt in dtArray:
         amplitude = MAX - MIN
         analiticalSolution[:] -= MIN
         analiticalSolutionFunc = intp.interp1d(time_array, analiticalSolution)
-
 
     u_e[:] = 100*u_e[:] - 80 # scaled to membrane voltage
     u[:] = 100*u[:] - 80 # scaled to membrane voltage
@@ -193,14 +182,14 @@ for dt in dtArray:
 
     error.append(errTmp)
     error_e.append(errTmp_e)
+        #timeMaxError.append(indexErrTpm * dt)
 
     if counter == 0:
-        plt.plot(time_array, analiticalSolution, 'k--', label='Аналитическое', linewidth=2)
-    if counter == 1:
-        plt.plot(time_array, u, '-', label='Погрешность 5% по норме RRMS', linewidth=2)
-    if counter == 2:
-        plt.plot(time_array, u, '-', label='Погрешность 5% по норме Maxmod', linewidth=2)
-    plt.legend(loc='best', prop={'size': 20})
+        plt.plot(time_array, analiticalSolution, 'k-', label='k = 8', linewidth=4)
+    #elif (counter%3 == 0):
+        #plt.plot(time_array, u, '-', label='dt = %.2e ms' % 12.9*dtArray[counter], linewidth=4)
+        #pl.title('timestep = %.0e ms\n' % (dt))
+    plt.legend(loc='best')
     plt.xlabel('Время, мс')
     plt.ylabel('V, мВ')
     plt.ylim([0, 140])
@@ -214,14 +203,16 @@ for dt in dtArray:
     #speedup.append(intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(ERROR) / \
     #               intp.interp1d(error_for_calc[1:, 0], timingSIE[1:])(ERROR))
 
-error = np.array(error)
-error_e = np.array(error_e)
+#plt.figure()
+#plt.plot(k, speedup, 'b-o', linewidth=4, markersize=10)
+#plt.xlabel('k')
+#plt.ylabel('Speedup')
+#plt.grid('on')
+#plt.show()
 
-'''dtSpecific = [intp.interp1d(error[1:, 0], dtArray[1:])(5.), intp.interp1d(error[1:, 1], dtArray[1:])(5.)]
 
-print('dtSpecific = ', dtSpecific)'''
 
-print ('time elapsed = %.2e sec' % (time.clock() - start))
+print('time elapsed = %.2e sec' % (time.clock() - start))
 
 def CalculatePolyfit(arrayX, arrayY, order):
     p = intp.interp1d(arrayX, arrayY)
@@ -232,7 +223,7 @@ def CalculatePolyfit(arrayX, arrayY, order):
 
 
 
-#ap_analytical_vs_5percent_errors
+
 
 
 
@@ -246,7 +237,7 @@ orderOfpolynomial = 1
 error = np.array(error)
 error_e = np.array(error_e)
 
-#print error
+print('Max: rrms = %.2f, maxmod = %.2f' % (np.amax(error[1:, 0]), np.amax(error[1:, 1])))
 #error = map(list, zip(*error))
 #error_e = map(list, zip(*error_e))
 
@@ -304,28 +295,26 @@ np.savetxt('errors_3_types_%.1fsec.csv' % T, np.c_[dtArray[1:],\
 '''
 
 fig2 = plt.figure()
-plt.loglog((timingSIE[1:]), (error[1:, 0]), 'b-o', label='Simplified B.Euler', linewidth=4, markersize=10)
-plt.loglog((timingEE[1:]), (error_e[1:, 0]), 'g-o', label='F.Euler', linewidth=4, markersize=10)
+plt.loglog((timingSIE[1:]), (error[1:, 0]), 'b-o', label='Упрощенный неявный метод', linewidth=4, markersize=10)
+plt.loglog((timingEE[1:]), (error_e[1:, 0]), 'g-o', label='Явный метод', linewidth=4, markersize=10)
 plt.grid('on')
-plt.xlabel('t calc, s')
-plt.ylabel('RRMS error, %')
-plt.ylim([0., 100.])
+plt.xlabel('Время вычисления, с')
+plt.ylabel('Погрешность RRMS, %')
+plt.ylim([0., 1000])
 plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
 plt.axhline(y=1, linewidth=4, color='k', linestyle='--', label='1%')
-plt.legend()
+plt.legend(loc='lower left', prop={'size': 15})
 
 fig3 = plt.figure()
-plt.loglog((timingSIE[1:]), (error[1:, 1]), 'b-o',label='Simplified B.Euler', linewidth=4, markersize=10)
-plt.loglog((timingEE[1:]), (error_e[1:, 1]), 'g-o',label='F.Euler', linewidth=4, markersize=10)
+plt.loglog((timingSIE[1:]), (error[1:, 1]), 'b-o',label='Упрощенный неявный метод', linewidth=4, markersize=10)
+plt.loglog((timingEE[1:]), (error_e[1:, 1]), 'g-o',label='Явный метод', linewidth=4, markersize=10)
 plt.grid('on')
-plt.xlabel('t calc, s')
-plt.ylabel('Maxmod error, %')
-plt.ylim([0., 100.])
+plt.xlabel('Время вычисления, с')
+plt.ylabel('Погрешность Maxmod, %')
+plt.ylim([0, 1000])
 plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
 plt.axhline(y=1, linewidth=4, color='k', linestyle='--', label='1%')
-plt.legend()
-
-
+plt.legend(loc='lower left', prop={'size': 15})
 
 
 
@@ -374,3 +363,5 @@ np.savetxt('errors_3_types_T%.1fsec.csv' % T, np.c_[dtArray[1:], error[0,1:], er
            header='timestep(ms),max_norm_error_SIE,max_norm_error_EE,RRMS_SIE,RRMS_EE,mixed_RRMS_max_norm_SIE,mixed_RRMS_max_norm_EE,timingSIE,timingEE')
 '''
 plt.show()
+
+#ap_k8_analytical_solution
