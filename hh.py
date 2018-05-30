@@ -68,13 +68,13 @@ def CalculateNorm(analiticalSolutionFunc, numericalSolutionArr, dt, amplitude):
 
     for i in range(len(errorsList)):
         if np.isnan(errorsList[i]) == True:
-            errorsList[i] = 1e20 #sys.float_info.max
+            errorsList[i] = sys.float_info.max
 
     return errorsList
 
 
 
-g_n = [120.] + [800.] #[float(2*i) for i in range(100, 401, 100)]
+g_n = [800.] #[float(2*i) for i in range(100, 401, 100)]
 g_k = 36
 g_l = 0.3
 v_n = 115
@@ -102,12 +102,11 @@ v_rest = 0
 
 error, error_e, timeMaxError, timeMaxError_e = [], [], [], []
 amplitude = 0
-counter = 0
 omega = 1 # relaxation parameter
 
-@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
-                        nb.float64[:], nb.float64), nopython=True)
+#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+                        #nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], \
+                        #nb.float64[:], nb.float64), nopython=True)
 def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s, g_n):
     m[0] = m_inf(v_rest)
     h[0] = h_inf(v_rest)
@@ -126,8 +125,8 @@ def CalculateHHusingExplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs
 
 
 
-@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
-                        nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64), nopython=True)
+#@nb.jit((nb.float64[:], nb.int64, nb.float64, nb.int64, \
+                        #nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64[:], nb.float64), nopython=True)
 def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rhs, I_s, g_n):
 
     '''
@@ -154,7 +153,8 @@ def CalculateHHusingSImplicitEuler(time_array, size, dt, counter, m, n, h, v, Rh
 
         dv = Rhs[i-1] * dt / (1 - omega * dt * derivative)
         v[i] = v[i-1] + dv
-#hh_analytical_solutions
+
+
 
 analiticalSolutionFunc = None
 amplitude = 0
@@ -188,31 +188,29 @@ for stiffnessParameter in g_n:
         m = np.zeros(SIZE)
         n = np.zeros(SIZE)
         h = np.zeros(SIZE)
-        Rhs = np.zeros(SIZE) # [0. for i in range(size)]
-        v_e = 0 * np.ones(SIZE) #[0. for i in range(size)]
-        m_e = np.zeros(SIZE) #[0. for i in range(size)]
-        h_e = np.zeros(SIZE) # [0. for i in range(size)]
-        n_e = np.zeros(SIZE) #[0. for i in range(size)]
-        Rhs_e = np.zeros(SIZE) #[0. for i in range(size)]
-        I_s = np.zeros(SIZE) #[10. for i in range(size)]
+        Rhs = np.zeros(SIZE)
+        v_e = 0 * np.ones(SIZE)
+        m_e = np.zeros(SIZE)
+        h_e = np.zeros(SIZE)
+        n_e = np.zeros(SIZE)
+        Rhs_e = np.zeros(SIZE)
+        I_s = np.zeros(SIZE)
         I_s[:] = 10
 
 
-        NUM_LAUNCHES = 5
+        NUM_LAUNCHES = 1
         startEE = time.clock()
         for i in range(NUM_LAUNCHES):
-            CalculateHHusingExplicitEuler(time_array, SIZE, dt, counter, m, n, h, v_e, Rhs, I_s, stiffnessParameter)
+            CalculateHHusingExplicitEuler(time_array, SIZE, dt, counterInner, m, n, h, v_e, Rhs, I_s, stiffnessParameter)
         timingEE.append((time.clock() - startEE)/NUM_LAUNCHES)
 
         startSIE = time.clock()
         for i in range(NUM_LAUNCHES):
-            CalculateHHusingSImplicitEuler(time_array, SIZE, dt, counter, m, n, h, v, Rhs, I_s, stiffnessParameter)
+            CalculateHHusingSImplicitEuler(time_array, SIZE, dt, counterInner, m, n, h, v, Rhs, I_s, stiffnessParameter)
         timingSIE.append((time.clock() - startSIE)/NUM_LAUNCHES)
 
-        if counter == 0:
+        if counterInner == 0:
             analiticalSolution = np.zeros(len(time_array))
-
-        if (counter == 0):
             analiticalSolution[:] = v_e[:]
             MIN, MAX = np.amin(analiticalSolution), np.amax(analiticalSolution)
             amplitude = MAX - MIN
@@ -230,13 +228,12 @@ for stiffnessParameter in g_n:
 
         error.append(errTmp)
         error_e.append(errTmp_e)
-        #timeMaxError.append(indexErrTpm * dt)
 
         if counterInner == 0:
             if counterOuter == 0:
-                plt.plot(time_array, analiticalSolution, 'k--', label=r'$g_{Na}$ = %d $мСм/см^2$' % stiffnessParameter, linewidth=4)
+                plt.plot(time_array, analiticalSolution, 'k-', label=r'$g_{Na}$ = %d $мСм/см^2$' % stiffnessParameter, linewidth=4)
             else:
-                plt.plot(time_array, analiticalSolution, '-', label=r'$g_{Na}$ = %d $мСм/см^2$' % stiffnessParameter, linewidth=4)
+                plt.plot(time_array, analiticalSolution, 'k-', label=r'$g_{Na}$ = %d $мСм/см^2$' % stiffnessParameter, linewidth=4)
         #if counter == 1:
         #    plt.plot(time_array, v, '-', label='5% RRMS error', linewidth=2)
         #if counter == 2:
@@ -254,11 +251,11 @@ for stiffnessParameter in g_n:
         counterInner += 1
 
     counterOuter += 1
-    error_for_calc.append(np.array(error))
-    error_e_for_calc.append(np.array(error_e))
+    error_for_calc.append(np.asarray(error))
+    error_e_for_calc.append(np.asarray(error_e))
 
-    timingSIE_for_calc.append(np.array(timingSIE))
-    timingEE_for_calc.append(np.array(timingEE))
+    timingSIE_for_calc.append(np.asarray(timingSIE))
+    timingEE_for_calc.append(np.asarray(timingEE))
 
     '''speedupRRMS.append([intp.interp1d(error_e_for_calc[1:, 0], timingEE[1:])(5.) / \
                        intp.interp1d(error_for_calc[1:, 0], timingSIE[1:])(5.), \
@@ -275,6 +272,8 @@ for stiffnessParameter in g_n:
 
 plt.show()
 print ('time elapsed = %.2e sec' % (time.clock() - start))
+
+print (error_e_for_calc[0])
 
 '''speedupRRMS = np.array(speedupRRMS)
 speedupMaxmod = np.array(speedupMaxmod)
@@ -373,36 +372,32 @@ np.savetxt('errors_3_types_%.1fsec.csv' % T, np.c_[dtArray[1:],\
 '''
 
 fig2 = plt.figure()
-#ax1.plot(np.log(dtArray[1:]), np.log(error[1:]), 'k-o', linewidth=4, markersize = 15)
-#ax1.set_xlabel('ln(timestep)')
-#ax1.set_ylabel('ln(absolute error)')
-
-#plt.loglog((timingSIE_for_calc[0][1:]), (error_for_calc[0][1:,0]), 'b--o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
-plt.loglog((timingEE_for_calc[0][1:]), (error_e_for_calc[0][1:,0]), 'g--o', label='Явный метод', linewidth=4, markersize = 10)
-#plt.loglog((timingSIE_for_calc[1][1:]), (error_for_calc[1][1:,0]), 'b-o', label='Упрощенный неявный метод 1', linewidth=4, markersize = 10)
-plt.loglog((timingEE_for_calc[1][1:]), (error_e_for_calc[1][1:,0]), 'g-o', label='Явный метод 1', linewidth=4, markersize = 10)
+plt.loglog((timingSIE_for_calc[0][1:]), (error_for_calc[0][1:,0]), 'b-o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
+plt.loglog((timingEE_for_calc[0][1:]), (error_e_for_calc[0][1:,0]), 'g-o', label='Явный метод', linewidth=4, markersize = 10)
+#plt.loglog((timingSIE_for_calc[1][1:]), (error_for_calc[1][1:,0]), 'b-o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
+#plt.loglog((timingEE_for_calc[1][1:]), (error_e_for_calc[1][1:,0]), 'g-o', label='Явный метод', linewidth=4, markersize = 10)
 
 plt.grid('on')
 plt.xlabel('Время вычисления, с')
 plt.ylabel('Погрешность RRMS, %')
 plt.ylim([0, 100])
-plt.axhline(y=5, linewidth=2, color='k', linestyle='-', label='5%')
-plt.axhline(y=1, linewidth=2, color='k', linestyle='-', label='1%')
-plt.legend(loc='best', prop={'size': 20})
+plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
+plt.axhline(y=1, linewidth=4, color='k', linestyle='-', label='1%')
+plt.legend(loc='lower left', prop={'size': 20})
 
 
 fig3 = plt.figure()
-plt.loglog((timingSIE_for_calc[0][1:]), (error_for_calc[0][1:,1]), 'b--o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
-plt.loglog((timingEE_for_calc[0][1:]), (error_e_for_calc[0][1:,1]), 'g--o', label='Явный метод', linewidth=4, markersize = 10)
-plt.loglog((timingSIE_for_calc[1][1:]), (error_for_calc[1][1:,1]), 'b-o', label='Упрощенный неявный метод 1', linewidth=4, markersize = 10)
-plt.loglog((timingEE_for_calc[1][1:]), (error_e_for_calc[1][1:,1]), 'g-o', label='Явный метод 1', linewidth=4, markersize = 10)
+plt.loglog((timingSIE_for_calc[0][1:]), (error_for_calc[0][1:,1]), 'b-o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
+plt.loglog((timingEE_for_calc[0][1:]), (error_e_for_calc[0][1:,1]), 'g-o', label='Явный метод', linewidth=4, markersize = 10)
+#plt.loglog((timingSIE_for_calc[1][1:]), (error_for_calc[1][1:,1]), 'b-o', label='Упрощенный неявный метод', linewidth=4, markersize = 10)
+#plt.loglog((timingEE_for_calc[1][1:]), (error_e_for_calc[1][1:,1]), 'g-o', label='Явный метод', linewidth=4, markersize = 10)
 plt.grid('on')
 plt.xlabel('Время вычисления, с')
 plt.ylabel('Погрешность Maxmod, %')
 plt.ylim([0., 100])
-plt.axhline(y=5, linewidth=2, color='k', linestyle='-', label='5%')
-plt.axhline(y=1, linewidth=2, color='k', linestyle='-', label='1%')
-plt.legend(loc='best', prop={'size': 20})
+plt.axhline(y=5, linewidth=4, color='k', linestyle='--', label='5%')
+plt.axhline(y=1, linewidth=4, color='k', linestyle='-', label='1%')
+plt.legend(loc='lower left', prop={'size': 20})
 
 '''
 ax1.plot((dtArray[1:]), (error[1][1:]), 'b-s', label='Simplified Backward Euler', linewidth=4, markersize = 10)
@@ -450,4 +445,4 @@ np.savetxt('errors_3_types_T%.1fsec.csv' % T, np.c_[dtArray[1:], error[0,1:], er
 '''
 plt.show()
 
-#hh_2analytical_solutions
+#hh_g800_rrms_error
